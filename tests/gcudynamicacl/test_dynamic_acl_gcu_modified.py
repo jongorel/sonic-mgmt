@@ -1,6 +1,13 @@
 import logging
 import pytest
 import time
+import os
+import time
+import random
+import logging
+import pprint
+import json
+import six
 
 from tests.common.helpers.assertions import pytest_assert, pytest_require
 
@@ -180,6 +187,66 @@ def setup(duthosts, ptfhost, rand_selected_dut, rand_unselected_dut, tbinfo, ptf
     for duthost in duthosts:
         duthost.command("rm -rf {}".format(DUT_TMP_DIR))
 
+@pytest.fixture(scope="module")
+def populate_vlan_arp_entries(setup, ptfhost, duthosts, rand_one_dut_hostname, ip_version):
+    """Set up the ARP responder utility in the PTF container."""
+    global DOWNSTREAM_IP_PORT_MAP
+    # For m0 topo, need to refresh this constant for two different scenario
+    DOWNSTREAM_IP_PORT_MAP = {}
+    duthost = duthosts[rand_one_dut_hostname]
+    if setup["topo"] not in ["t0", "mx", "m0_vlan"]:
+        def noop():
+            pass
+
+        yield noop
+
+        return  # Don't fall through to t0/mx/m0_vlan case
+
+    addr_list = [DOWNSTREAM_DST_IP[ip_version], DOWNSTREAM_IP_TO_ALLOW[ip_version], DOWNSTREAM_IP_TO_BLOCK[ip_version]]
+
+    vlan_host_map = defaultdict(dict)
+    for i in range(len(addr_list)):
+        mac = VLAN_BASE_MAC_PATTERN.format(i)
+        port = random.choice(setup["vlan_ports"])
+        addr = addr_list[i]
+        vlan_host_map[port][str(addr)] = mac
+        DOWNSTREAM_IP_PORT_MAP[addr] = port
+
+    arp_responder_conf = {}
+    for port in vlan_host_map:
+        arp_responder_conf['eth{}'.format(port)] = vlan_host_map[port]
+
+    with open("/tmp/from_t1.json", "w") as ar_config:
+        json.dump(arp_responder_conf, ar_config)
+    ptfhost.copy(src="/tmp/from_t1.json", dest="/tmp/from_t1.json")
+
+    ptfhost.host.options["variable_manager"].extra_vars.update({"arp_responder_args": "-e"})
+    ptfhost.template(src="templates/arp_responder.conf.j2", dest="/etc/supervisor/conf.d/arp_responder.conf")
+
+    ptfhost.shell("supervisorctl reread && supervisorctl update")
+    ptfhost.shell("supervisorctl restart arp_responder")
+
+    def populate_arp_table():
+        for dut in duthosts:
+            dut.command("sonic-clear fdb all")
+            dut.command("sonic-clear arp")
+            dut.command("sonic-clear ndp")
+            # Wait some time to ensure the async call of clear is completed
+            time.sleep(20)
+            for addr in addr_list:
+                dut.command("ping {} -c 3".format(addr), module_ignore_errors=True)
+
+    populate_arp_table()
+
+    yield populate_arp_table
+
+    logging.info("Stopping ARP responder")
+    ptfhost.shell("supervisorctl stop arp_responder", module_ignore_errors=True)
+
+    duthost.command("sonic-clear fdb all")
+    duthost.command("sonic-clear arp")
+    duthost.command("sonic-clear ndp")
+
 def get_src_port(setup, direction):
     """Get a source port for the current test."""
     src_ports = setup["downstream_port_ids"] if direction == "downlink->uplink" else setup["upstream_port_ids"]
@@ -195,12 +262,11 @@ def get_dst_ip(direction, ip_version):
     """Get the default destination IP for the current test."""
     return UPSTREAM_DST_IP[ip_version] if direction == "downlink->uplink" else DOWNSTREAM_DST_IP[ip_version]
 
-def tcp_packet(setup, direction, ptfadapter, ip_version,
+def tcp_packet(setup, direction, ptfadapter, ip_version, src_port,
                    src_ip=None, dst_ip=None, proto=None, sport=0x4321, dport=0x51, flags=None):
         """Generate a TCP packet for testing."""
         src_ip = src_ip or DEFAULT_SRC_IP[ip_version]
         dst_ip = dst_ip or get_dst_ip(direction, ip_version)
-        src_port = get_src_port(setup, direction)
         if ip_version == "ipv4":
             pkt = testutils.simple_tcp_packet(
                 eth_dst=setup["destination_mac"][direction][src_port],
@@ -233,82 +299,65 @@ def tcp_packet(setup, direction, ptfadapter, ip_version,
 
         return pkt
 
-def expected_mask_routed_packet(self, pkt, ip_version):
-        """Generate the expected mask for a routed packet."""
-        exp_pkt = pkt.copy()
+def expected_mask_routed_packet(pkt, ip_version):
+    """Generate the expected mask for a routed packet."""
+    exp_pkt = pkt.copy()
 
-        exp_pkt = mask.Mask(exp_pkt)
-        exp_pkt.set_do_not_care_scapy(packet.Ether, "dst")
-        exp_pkt.set_do_not_care_scapy(packet.Ether, "src")
+    exp_pkt = mask.Mask(exp_pkt)
+    exp_pkt.set_do_not_care_scapy(packet.Ether, "dst")
+    exp_pkt.set_do_not_care_scapy(packet.Ether, "src")
 
-        if ip_version == "ipv4":
-            exp_pkt.set_do_not_care_scapy(packet.IP, "chksum")
-            # In multi-asic we cannot determine this so ignore.
-            exp_pkt.set_do_not_care_scapy(packet.IP, 'ttl')
-        else:
-            # In multi-asic we cannot determine this so ignore.
-            exp_pkt.set_do_not_care_scapy(packet.IPv6, 'hlim')
-
-        return exp_pkt
-
-def verify_expected_packet_behavior(exp_pkt, ptfadapter, dst_ports, expect_drop):
-    if expect_drop:
-        testutils.verify_no_packet_any(ptfadapter, exp_pkt, ports=dst_ports)
+    if ip_version == "ipv4":
+        exp_pkt.set_do_not_care_scapy(packet.IP, "chksum")
+        # In multi-asic we cannot determine this so ignore.
+        exp_pkt.set_do_not_care_scapy(packet.IP, 'ttl')
     else:
-        testutils.verify_packet_any_port(ptfadapter, exp_pkt, ports=dst_ports,
-                                        timeout=20)
+        # In multi-asic we cannot determine this so ignore.
+        exp_pkt.set_do_not_care_scapy(packet.IPv6, 'hlim')
+
+    return exp_pkt
         
-def _verify_acl_traffic(self, setup, direction, ptfadapter, pkt, dropped, ip_version):
-        exp_pkt = self.expected_mask_routed_packet(pkt, ip_version)
+def _verify_acl_traffic(setup, direction, ptfadapter, pkt, dropped, ip_version, source_port):
+    exp_pkt = expected_mask_routed_packet(pkt, ip_version)
 
-        if ip_version == "ipv4":
-            downstream_dst_port = DOWNSTREAM_IP_PORT_MAP.get(pkt[packet.IP].dst)
+    if ip_version == "ipv4":
+        downstream_dst_port = DOWNSTREAM_IP_PORT_MAP.get(pkt[packet.IP].dst)
+    else:
+        downstream_dst_port = DOWNSTREAM_IP_PORT_MAP.get(pkt[packet.IPv6].dst)
+    ptfadapter.dataplane.flush()
+    testutils.send(ptfadapter, source_port, pkt)
+    if direction == "uplink->downlink" and downstream_dst_port:
+        if dropped:
+            testutils.verify_no_packet(ptfadapter, exp_pkt, downstream_dst_port)
         else:
-            downstream_dst_port = DOWNSTREAM_IP_PORT_MAP.get(pkt[packet.IPv6].dst)
-        ptfadapter.dataplane.flush()
-        testutils.send(ptfadapter, self.src_port, pkt)
-        if direction == "uplink->downlink" and downstream_dst_port:
-            if dropped:
-                testutils.verify_no_packet(ptfadapter, exp_pkt, downstream_dst_port)
-            else:
-                testutils.verify_packet(ptfadapter, exp_pkt, downstream_dst_port)
+            testutils.verify_packet(ptfadapter, exp_pkt, downstream_dst_port)
+    else:
+        if dropped:
+            testutils.verify_no_packet_any(ptfadapter, exp_pkt, ports=get_dst_ports(setup, direction))
         else:
-            if dropped:
-                testutils.verify_no_packet_any(ptfadapter, exp_pkt, ports=self.get_dst_ports(setup, direction))
-            else:
-                testutils.verify_packet_any_port(ptfadapter, exp_pkt, ports=self.get_dst_ports(setup, direction),
-                                                 timeout=20)
+            testutils.verify_packet_any_port(ptfadapter, exp_pkt, ports=get_dst_ports(setup, direction),
+                                                timeout=20)
 
-def generate_forward_packets(router_mac):
-    DST_IP = "103.23.2.1"
-    DST_IPV6 = "103:23:2:1::1"
+def generate_forward_packets(setup, ptfadapter):
+    dst_ipv4 = DOWNSTREAM_IP_TO_ALLOW["ipv4"]
+    dst_ipv6 = DOWNSTREAM_IP_TO_ALLOW["ipv6"]
 
     forward_packets = {}
 
-    forward_packets["IPV4"] = testutils.simple_tcp_packet(eth_dst=router_mac,
-                                ip_src='192.168.0.3',
-                                ip_dst=DST_IP)
+    forward_packets["IPV4"] = tcp_packet(setup, "downlink->uplink", ptfadapter, "ipv4", dst_ip= dst_ipv4)
     
-    forward_packets["IPV6"] = testutils.simple_tcpv6_packet(eth_dst=router_mac,
-                                ipv6_src='fc02:1000::3',
-                                ipv6_dst=DST_IPV6)
+    forward_packets["IPV6"] = tcp_packet(setup, "downlink->uplink", ptfadapter, "ipv4", dst_ip= dst_ipv6)
     
     return forward_packets
 
 
-def generate_drop_packets(router_mac):
-    DST_IP = "103.23.3.1"
-    DST_IPV6 = "103:23:3:1::1"
+def generate_drop_packets(setup, ptfadapter):
 
     drop_packets = {}
 
-    drop_packets["IPV4"] = testutils.simple_tcp_packet(eth_dst=router_mac,
-                                ip_src='192.168.0.3',
-                                ip_dst=DST_IP)
+    drop_packets["IPV4"] = tcp_packet(setup, "downlink->uplink", ptfadapter, "ipv4")
     
-    drop_packets["IPV6"] = testutils.simple_tcpv6_packet(eth_dst=router_mac,
-                                ipv6_src='fc02:1000::3',
-                                ipv6_dst=DST_IPV6)
+    drop_packets["IPV6"] = tcp_packet(setup, "downlink->uplink", ptfadapter, "ipv6")
     
     return drop_packets
 
@@ -395,7 +444,7 @@ def dynamic_acl_create_table_type(duthost):
     finally:
         delete_tmpfile(duthost, tmpfile)
 
-def dynamic_acl_create_table(duthost):
+def dynamic_acl_create_table(duthost, setup):
     """Create a new ACL table type that can be used"""
     json_patch = [
         {
@@ -405,13 +454,13 @@ def dynamic_acl_create_table(duthost):
                 "policy_desc": "DYNAMIC_ACL_TABLE", 
                 "type": "DYNAMIC_ACL_TABLE_TYPE", 
                 "stage": "INGRESS", 
-                "ports": ["Ethernet4","Ethernet8","Ethernet12","Ethernet16","Ethernet20","Ethernet24","Ethernet28","Ethernet32","Ethernet36","Ethernet40","Ethernet44","Ethernet48","Ethernet52","Ethernet56","Ethernet60","Ethernet64","Ethernet68","Ethernet72","Ethernet76","Ethernet80","Ethernet84","Ethernet88","Ethernet92","Ethernet96"] 
+                "ports": setup["acl_table_ports"]['']
             }                        
         }
     ]
 
-    expected_bindings = ["Ethernet4","Ethernet8","Ethernet12","Ethernet16","Ethernet20","Ethernet24","Ethernet28","Ethernet32","Ethernet36","Ethernet40","Ethernet44","Ethernet48","Ethernet52","Ethernet56","Ethernet60","Ethernet64","Ethernet68","Ethernet72","Ethernet76","Ethernet80","Ethernet84","Ethernet88","Ethernet92","Ethernet96"] 
-    expected_first_line = ["DYNAMIC_ACL_TABLE", "DYNAMIC_ACL_TABLE_TYPE", "Ethernet4", "DYNAMIC_ACL_TABLE", "ingress"]
+    expected_bindings = setup["acl_table_ports"]['']
+    expected_first_line = ["DYNAMIC_ACL_TABLE", "DYNAMIC_ACL_TABLE_TYPE", setup["acl_table_ports"][''][0], "DYNAMIC_ACL_TABLE", "ingress"]
 
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {}".format(tmpfile))
@@ -425,7 +474,7 @@ def dynamic_acl_create_table(duthost):
         delete_tmpfile(duthost, tmpfile)
 
 def dynamic_acl_create_duplicate_table(duthost):
-    """Create a duplicate ACL table type that should fail"""
+    """Create a duplicate ACL table type that should succeed"""
     json_patch = [
         {
             "op": "add", 
@@ -434,7 +483,7 @@ def dynamic_acl_create_duplicate_table(duthost):
                 "policy_desc": "DYNAMIC_ACL_TABLE", 
                 "type": "DYNAMIC_ACL_TABLE_TYPE", 
                 "stage": "INGRESS", 
-                "ports": ["Ethernet4","Ethernet8","Ethernet12","Ethernet16","Ethernet20","Ethernet24","Ethernet28","Ethernet32","Ethernet36","Ethernet40","Ethernet44","Ethernet48","Ethernet52","Ethernet56","Ethernet60","Ethernet64","Ethernet68","Ethernet72","Ethernet76","Ethernet80","Ethernet84","Ethernet88","Ethernet92","Ethernet96"] 
+                "ports": setup["acl_table_ports"]['']
             }                        
         }
     ]
@@ -451,18 +500,21 @@ def dynamic_acl_create_duplicate_table(duthost):
 def dynamic_acl_create_forward_rules(duthost):
     """Create forward ACL rules"""
 
+    dst_ipv4 = DOWNSTREAM_IP_TO_ALLOW["ipv4"]+"/32"
+    dst_ipv6 = DOWNSTREAM_IP_TO_ALLOW["ipv6"]+"/128"
+
     json_patch = [ 
         { 
             "op": "add", 
             "path": "/ACL_RULE", 
             "value": { 
                 "DYNAMIC_ACL_TABLE|RULE_1": {
-                    "DST_IP": "103.23.2.1/32", 
+                    "DST_IP": dst_ipv4, 
                     "PRIORITY": "9999", 
                     "PACKET_ACTION": "FORWARD" 
                 }, 
                 "DYNAMIC_ACL_TABLE|RULE_2": {
-                    "DST_IPV6": "103:23:2:1::1/128", 
+                    "DST_IPV6": dst_ipv6, 
                     "PRIORITY": "9998", 
                     "PACKET_ACTION": "FORWARD" 
                 }
@@ -470,8 +522,8 @@ def dynamic_acl_create_forward_rules(duthost):
         } 
     ] 
 
-    expected_rule_1_content = ["DYNAMIC_ACL_TABLE", "RULE_1", "9999", "FORWARD", "DST_IP:", "103.23.2.1/32"]
-    expected_rule_2_content = ["DYNAMIC_ACL_TABLE", "RULE_2", "9998", "FORWARD", "DST_IPV6:",  "103:23:2:1::1/128"]
+    expected_rule_1_content = ["DYNAMIC_ACL_TABLE", "RULE_1", "9999", "FORWARD", "DST_IP:", dst_ipv4]
+    expected_rule_2_content = ["DYNAMIC_ACL_TABLE", "RULE_2", "9998", "FORWARD", "DST_IPV6:",  dst_ipv6]
 
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {}".format(tmpfile))
@@ -514,37 +566,23 @@ def dynamic_acl_create_drop_rule(duthost):
     finally:
         delete_tmpfile(duthost, tmpfile)
 
-def dynamic_acl_verify_packets(duthost, tbinfo, ptfadapter, packets_dropped):
-
-    #Get information from the dut that will be used to build and send packets correctly during testing
-    mg_facts = duthost.get_extended_minigraph_facts(tbinfo)
-    if "dualtor" in tbinfo["topo"]["name"]:
-        vlan_name = list(mg_facts['minigraph_vlans'].keys())[0]
-        # Use VLAN MAC as router MAC on dual-tor testbed
-        router_mac = duthost.get_dut_iface_mac(vlan_name)
-    else:
-        router_mac = duthost.facts['router_mac']
-
-    # Selected the first vlan port as source port
-    src_port = list(mg_facts['minigraph_vlans'].values())[0]['members'][0]
-    src_port_indice = mg_facts['minigraph_ptf_indices'][src_port]
-    # Put all portchannel members into dst_ports
-    dst_port_indices = []
-    for _, v in mg_facts['minigraph_portchannels'].items():
-        for member in v['members']:
-            dst_port_indices.append(mg_facts['minigraph_ptf_indices'][member])
+def dynamic_acl_verify_packets(duthost, setup, tbinfo, ptfadapter, src_port, packets_dropped):
 
     if packets_dropped:
-        test_pkts = generate_drop_packets(router_mac)
+        pkt_ipv4 = tcp_packet(setup, "downlink->uplink", ptfadapter, "ipv4", src_port = src_port)
+        _verify_acl_traffic(setup, "downlink->uplink", ptfadapter, pkt_ipv4, True, "ipv4")
+        
+        pkt_ipv6 = tcp_packet(setup, "downlink->uplink", ptfadapter, "ipv6", src_port = src_port)
+        _verify_acl_traffic(setup, "downlink->uplink", ptfadapter, pkt_ipv6, True, "ipv6")
     else:
-        test_pkts = generate_forward_packets(router_mac)
-    for rule, pkt in list(test_pkts.items()):
-        logger.info("Testing that {} packets are correctly dropped".format(rule))
-        exp_pkt = build_exp_pkt(pkt)
-        # Send and verify packet
-        ptfadapter.dataplane.flush()
-        testutils.send(ptfadapter, pkt=pkt, port_id=src_port_indice)
-        verify_expected_packet_behavior(exp_pkt, ptfadapter, dst_port_indices, expect_drop=packets_dropped)
+        dst_ipv4 = DOWNSTREAM_IP_TO_ALLOW["ipv4"] 
+        dst_ipv6 = DOWNSTREAM_IP_TO_ALLOW["ipv6"] 
+
+        pkt_ipv4 = tcp_packet(setup, "downlink->uplink", ptfadapter, "ipv4", src_port = src_port, dst_ip=dst_ipv4)
+        _verify_acl_traffic(setup, "downlink->uplink", ptfadapter, pkt_ipv4, False, "ipv4")
+        
+        pkt_ipv4 = tcp_packet(setup, "downlink->uplink", ptfadapter, "ipv6", src_port = src_port, dst_ip=dst_ipv6)
+        _verify_acl_traffic(setup, "downlink->uplink", ptfadapter, pkt_ipv6, False, "ipv6")
 
 def dynamic_acl_remove_drop_rule(duthost):
     json_patch = [ 
@@ -714,33 +752,17 @@ def dynamic_acl_remove_table_type(duthost):
 
 
 
-def test_dynamic_acl_test(rand_selected_dut, tbinfo, ptfadapter):
+def test_dynamic_acl_test(rand_selected_dut, setup, tbinfo, ptfadapter, populate_vlan_arp_entries):
 
-    #Get information from the dut that will be used to build and send packets correctly during testing
-    mg_facts = rand_selected_dut.get_extended_minigraph_facts(tbinfo)
-    if "dualtor" in tbinfo["topo"]["name"]:
-        vlan_name = list(mg_facts['minigraph_vlans'].keys())[0]
-        # Use VLAN MAC as router MAC on dual-tor testbed
-        router_mac = rand_selected_dut.get_dut_iface_mac(vlan_name)
-    else:
-        router_mac = rand_selected_dut.facts['router_mac']
-
-    # Selected the first vlan port as source port
-    src_port = list(mg_facts['minigraph_vlans'].values())[0]['members'][0]
-    src_port_indice = mg_facts['minigraph_ptf_indices'][src_port]
-    # Put all portchannel members into dst_ports
-    dst_port_indices = []
-    for _, v in mg_facts['minigraph_portchannels'].items():
-        for member in v['members']:
-            dst_port_indices.append(mg_facts['minigraph_ptf_indices'][member])
+    src_port = get_src_port(setup, "downlink->uplink")
 
     dynamic_acl_create_table_type(rand_selected_dut)
-    dynamic_acl_create_table(rand_selected_dut)
+    dynamic_acl_create_table(rand_selected_dut, setup)
     dynamic_acl_create_duplicate_table(rand_selected_dut)
-    dynamic_acl_create_forward_rules(rand_selected_dut)
+    dynamic_acl_create_forward_rules(setup, rand_selected_dut)
     dynamic_acl_create_drop_rule(rand_selected_dut)
-    dynamic_acl_verify_packets(rand_selected_dut, tbinfo, ptfadapter, packets_dropped=True) #Verify that packets not forwarded are universally dropped
-    dynamic_acl_verify_packets(rand_selected_dut, tbinfo, ptfadapter, packets_dropped=False) #Verify that packets are correctly forwarded
+    dynamic_acl_verify_packets(rand_selected_dut, setup, tbinfo, ptfadapter, src_port = src_port, packets_dropped=True) #Verify that packets not forwarded are universally dropped
+    dynamic_acl_verify_packets(rand_selected_dut, setup, tbinfo, ptfadapter, src_port = src_port, packets_dropped=False) #Verify that packets are correctly forwarded
     dynamic_acl_remove_drop_rule(rand_selected_dut)
     dynamic_acl_replace_nonexistant_rule(rand_selected_dut)
     dynamic_acl_replace_rules(rand_selected_dut)

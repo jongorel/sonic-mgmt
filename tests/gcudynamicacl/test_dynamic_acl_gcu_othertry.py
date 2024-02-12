@@ -592,7 +592,7 @@ def acl_table_type(duthost):
         expect_op_success(duthost, output)
         yield
     finally:
-        delete_tmpfile(duthost)
+        delete_tmpfile(duthost, tmpfile)
 
 @pytest.fixture(scope="module")
 def acl_table(duthost, setup, stage, acl_table_type):

@@ -187,6 +187,13 @@ def setup(duthosts, ptfhost, rand_selected_dut, rand_unselected_dut, tbinfo, ptf
     for duthost in duthosts:
         duthost.command("rm -rf {}".format(DUT_TMP_DIR))
 
+@pytest.fixture(scope="module", params=["ipv4", "ipv6"])
+def ip_version(request, tbinfo, duthosts, rand_one_dut_hostname):
+    if tbinfo["topo"]["type"] in ["t0"] and request.param == "ipv6":
+        pytest.skip("IPV6 ACL test not currently supported on t0 testbeds")
+
+    return request.param
+
 @pytest.fixture(scope="module")
 def populate_vlan_arp_entries(setup, ptfhost, duthosts, rand_one_dut_hostname, ip_version):
     """Set up the ARP responder utility in the PTF container."""
@@ -338,29 +345,6 @@ def _verify_acl_traffic(setup, direction, ptfadapter, pkt, dropped, ip_version, 
             testutils.verify_packet_any_port(ptfadapter, exp_pkt, ports=get_dst_ports(setup, direction),
                                                 timeout=20)
 
-def generate_forward_packets(setup, ptfadapter):
-    dst_ipv4 = DOWNSTREAM_IP_TO_ALLOW["ipv4"]
-    dst_ipv6 = DOWNSTREAM_IP_TO_ALLOW["ipv6"]
-
-    forward_packets = {}
-
-    forward_packets["IPV4"] = tcp_packet(setup, "downlink->uplink", ptfadapter, "ipv4", dst_ip= dst_ipv4)
-    
-    forward_packets["IPV6"] = tcp_packet(setup, "downlink->uplink", ptfadapter, "ipv4", dst_ip= dst_ipv6)
-    
-    return forward_packets
-
-
-def generate_drop_packets(setup, ptfadapter):
-
-    drop_packets = {}
-
-    drop_packets["IPV4"] = tcp_packet(setup, "downlink->uplink", ptfadapter, "ipv4")
-    
-    drop_packets["IPV6"] = tcp_packet(setup, "downlink->uplink", ptfadapter, "ipv6")
-    
-    return drop_packets
-
 def expect_acl_table_match_multiple_bindings(duthost, table_name, expected_first_line_content, expected_bindings):
     """Check if acl table show as expected
     Acl table with multiple bindings will show as such
@@ -497,11 +481,16 @@ def dynamic_acl_create_duplicate_table(duthost):
     finally:
         delete_tmpfile(duthost, tmpfile)
 
-def dynamic_acl_create_forward_rules(duthost):
+def dynamic_acl_create_forward_rules(duthost, ip_version):
     """Create forward ACL rules"""
 
-    dst_ipv4 = DOWNSTREAM_IP_TO_ALLOW["ipv4"]+"/32"
-    dst_ipv6 = DOWNSTREAM_IP_TO_ALLOW["ipv6"]+"/128"
+
+    if ip_version == "ipv4":
+        dst_ip = DOWNSTREAM_IP_TO_ALLOW["ipv4"]+"/32"
+        match_type = "DST_IP"
+    else:
+        dst_ip = DOWNSTREAM_IP_TO_ALLOW["ipv6"]+"/128"
+        match_type = "DST_IPV6"
 
     json_patch = [ 
         { 
@@ -509,21 +498,15 @@ def dynamic_acl_create_forward_rules(duthost):
             "path": "/ACL_RULE", 
             "value": { 
                 "DYNAMIC_ACL_TABLE|RULE_1": {
-                    "DST_IP": dst_ipv4, 
+                    match_type: dst_ip, 
                     "PRIORITY": "9999", 
-                    "PACKET_ACTION": "FORWARD" 
-                }, 
-                "DYNAMIC_ACL_TABLE|RULE_2": {
-                    "DST_IPV6": dst_ipv6, 
-                    "PRIORITY": "9998", 
                     "PACKET_ACTION": "FORWARD" 
                 }
             }                                                                                                                               
         } 
     ] 
 
-    expected_rule_1_content = ["DYNAMIC_ACL_TABLE", "RULE_1", "9999", "FORWARD", "DST_IP:", dst_ipv4]
-    expected_rule_2_content = ["DYNAMIC_ACL_TABLE", "RULE_2", "9998", "FORWARD", "DST_IPV6:",  dst_ipv6]
+    expected_rule_content = ["DYNAMIC_ACL_TABLE", "RULE_1", "9999", "FORWARD", match_type, dst_ip]
 
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {}".format(tmpfile))
@@ -532,8 +515,7 @@ def dynamic_acl_create_forward_rules(duthost):
         output = apply_patch(duthost, json_data=json_patch, dest_file=tmpfile)
         expect_op_success(duthost, output)
 
-        expect_acl_rule_match(duthost, "RULE_1", expected_rule_1_content)
-        expect_acl_rule_match(duthost, "RULE_2", expected_rule_2_content)
+        expect_acl_rule_match(duthost, "RULE_1", expected_rule_content)
     finally:
         delete_tmpfile(duthost, tmpfile)
 
@@ -544,16 +526,16 @@ def dynamic_acl_create_drop_rule(duthost):
     json_patch = [
         { 
             "op": "add", 
-            "path": "/ACL_RULE/DYNAMIC_ACL_TABLE|RULE_3", 
+            "path": "/ACL_RULE/DYNAMIC_ACL_TABLE|RULE_2", 
             "value": { 
-                "PRIORITY": "9997", 
+                "PRIORITY": "9998", 
                 "PACKET_ACTION": "DROP", 
                 "IN_PORTS": "Ethernet4" 
             }                                                                                                                               
         } 
     ]
 
-    expected_rule_content = ["DYNAMIC_ACL_TABLE", "RULE_3", "9997" , "DROP", "IN_PORTS:", "Ethernet4"]
+    expected_rule_content = ["DYNAMIC_ACL_TABLE", "RULE_2", "9998" , "DROP", "IN_PORTS:", "Ethernet4"]
 
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {}".format(tmpfile))
@@ -562,33 +544,27 @@ def dynamic_acl_create_drop_rule(duthost):
         output = apply_patch(duthost, json_data=json_patch, dest_file=tmpfile)
         expect_op_success(duthost, output)
 
-        expect_acl_rule_match(duthost, "RULE_3", expected_rule_content)
+        expect_acl_rule_match(duthost, "RULE_2", expected_rule_content)
     finally:
         delete_tmpfile(duthost, tmpfile)
 
-def dynamic_acl_verify_packets(duthost, setup, tbinfo, ptfadapter, src_port, packets_dropped):
+def dynamic_acl_verify_packets(duthost, setup, tbinfo, ptfadapter, ip_version, src_port, packets_dropped):
 
     if packets_dropped:
-        pkt_ipv4 = tcp_packet(setup, "downlink->uplink", ptfadapter, "ipv4", src_port = src_port)
-        _verify_acl_traffic(setup, "downlink->uplink", ptfadapter, pkt_ipv4, True, "ipv4")
-        
-        pkt_ipv6 = tcp_packet(setup, "downlink->uplink", ptfadapter, "ipv6", src_port = src_port)
-        _verify_acl_traffic(setup, "downlink->uplink", ptfadapter, pkt_ipv6, True, "ipv6")
+        pkt = tcp_packet(setup, "downlink->uplink", ptfadapter, ip_version, src_port = src_port)
+        _verify_acl_traffic(setup, "downlink->uplink", ptfadapter, pkt, True, ip_version)
     else:
-        dst_ipv4 = DOWNSTREAM_IP_TO_ALLOW["ipv4"] 
-        dst_ipv6 = DOWNSTREAM_IP_TO_ALLOW["ipv6"] 
+        dst_ip = DOWNSTREAM_IP_TO_ALLOW[ip_version] 
 
-        pkt_ipv4 = tcp_packet(setup, "downlink->uplink", ptfadapter, "ipv4", src_port = src_port, dst_ip=dst_ipv4)
-        _verify_acl_traffic(setup, "downlink->uplink", ptfadapter, pkt_ipv4, False, "ipv4")
+        pkt = tcp_packet(setup, "downlink->uplink", ptfadapter, ip_version, src_port = src_port, dst_ip=dst_ip)
+        _verify_acl_traffic(setup, "downlink->uplink", ptfadapter, pkt, False, ip_version)
         
-        pkt_ipv4 = tcp_packet(setup, "downlink->uplink", ptfadapter, "ipv6", src_port = src_port, dst_ip=dst_ipv6)
-        _verify_acl_traffic(setup, "downlink->uplink", ptfadapter, pkt_ipv6, False, "ipv6")
 
 def dynamic_acl_remove_drop_rule(duthost):
     json_patch = [ 
         { 
             "op": "remove", 
-            "path": "/ACL_RULE/DYNAMIC_ACL_TABLE|RULE_3", 
+            "path": "/ACL_RULE/DYNAMIC_ACL_TABLE|RULE_2", 
             "value":{}                                                                                                                               
         }
     ]
@@ -600,7 +576,7 @@ def dynamic_acl_remove_drop_rule(duthost):
         output = apply_patch(duthost, json_data=json_patch, dest_file=tmpfile)
         expect_op_success(duthost, output)
 
-        expect_acl_rule_removed(duthost, "RULE_3")
+        expect_acl_rule_removed(duthost, "RULE_2")
     finally:
         delete_tmpfile(duthost, tmpfile)
 
@@ -626,30 +602,28 @@ def dynamic_acl_replace_nonexistant_rule(duthost):
     finally:
         delete_tmpfile(duthost, tmpfile)
 
-def dynamic_acl_replace_rules(duthost):
+def dynamic_acl_replace_rules(duthost, ip_version):
+
+    if ip_version == "ipv4":
+        dst_ip = DOWNSTREAM_IP_TO_ALLOW["ipv4"]+"/32"
+        match_type = "DST_IP"
+    else:
+        dst_ip = DOWNSTREAM_IP_TO_ALLOW["ipv6"]+"/128"
+        match_type = "DST_IPV6"
+
     json_patch = [ 
         { 
             "op": "replace", 
             "path": "/ACL_RULE/DYNAMIC_ACL_TABLE|RULE_1", 
             "value": { 
-                "DST_IP": "103.23.2.2/32", 
+                match_type: dst_ip, 
                 "PRIORITY": "9999", 
                 "PACKET_ACTION": "FORWARD" 
             }                                                                                                                               
-        }, 
-        { 
-        "op": "replace", 
-        "path": "/ACL_RULE/DYNAMIC_ACL_TABLE|RULE_2", 
-            "value": { 
-                "DST_IPV6": "103:23:2:1::2/128", 
-                "PRIORITY": "9998", 
-                "PACKET_ACTION": "FORWARD" 
-            }                                                                                                                               
-        } 
+        }
     ] 
 
     expected_rule_1_content = ["DYNAMIC_ACL_TABLE", "RULE_1", "9999", "FORWARD", "DST_IP:", "103.23.2.2/32"]
-    expected_rule_2_content = ["DYNAMIC_ACL_TABLE", "RULE_2", "9998", "FORWARD", "DST_IPV6:",  "103:23:2:1::2/128"]
 
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {}".format(tmpfile))
@@ -659,25 +633,18 @@ def dynamic_acl_replace_rules(duthost):
         expect_op_success(duthost, output)
 
         expect_acl_rule_match(duthost, "RULE_1", expected_rule_1_content)
-        expect_acl_rule_match(duthost, "RULE_2", expected_rule_2_content)
     finally:
         delete_tmpfile(duthost, tmpfile)
 
 
 def dynamic_acl_remove_forward_rules(duthost):
-    """Remove our two forward rules from the acl table
-    As the second operation would leave the table empty, we remove the whole ACL_RULE table instead of RULE_2"""
+    """Remove our two forward rules from the acl table"""
     json_patch = [ 
         { 
             "op": "remove", 
             "path": "/ACL_RULE/DYNAMIC_ACL_TABLE|RULE_1", 
             "value":{}                                                                                                                               
-        }, 
-        { 
-            "op": "remove", 
-            "path": "/ACL_RULE", 
-            "value": { }                                                                                                                               
-        } 
+        }
     ] 
 
     tmpfile = generate_tmpfile(duthost)
@@ -688,7 +655,6 @@ def dynamic_acl_remove_forward_rules(duthost):
         expect_op_success(duthost, output)
 
         expect_acl_rule_removed(duthost, "RULE_1")
-        expect_acl_rule_removed(duthost, "RULE_2")
     finally:
         delete_tmpfile(duthost, tmpfile)
 

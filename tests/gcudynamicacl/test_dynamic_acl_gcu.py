@@ -388,11 +388,11 @@ def dynamic_acl_remove_nonexistant_table(duthost):
 
 def dynamic_acl_remove_table_type(duthost):
     """Remove an ACL Table definition from the duthost
-    As we only have one ACL Table definition on """
+    As we only have one ACL Table definition on duthost, we have to remove the whole path to avoid an empty table"""
     json_patch = [ 
         { 
             "op": "remove", 
-            "path": "/ACL_TABLE_TYPE/DYNAMIC_ACL_TABLE_TYPE", 
+            "path": "/ACL_TABLE_TYPE", 
             "value": { }                                                                                                                                        
         } 
     ] 

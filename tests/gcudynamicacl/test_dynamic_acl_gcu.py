@@ -65,34 +65,24 @@ def setup(rand_selected_dut, tbinfo, vlan_name):
 
     return setup_information
 
-# TODO: Move this fixture to a shared place of acl test
-@pytest.fixture(scope="module", autouse=True)
-def remove_dataacl_table(rand_selected_dut):
+@pytest.fixture(autouse=True)
+def setup_env(duthosts, rand_one_dut_hostname):
     """
-    Remove DATAACL to free TCAM resources
+    Setup/teardown fixture for acl config
+    Args:
+        duthosts: list of DUTs.
+        rand_selected_dut: The fixture returns a randomly selected DuT.
     """
-    TABLE_NAME = "DATAACL"
-    data_acl_table = None
-    output = rand_selected_dut.shell("sonic-cfggen -d --var-json \"ACL_TABLE\"")['stdout']
-    try:
-        acl_tables = json.loads(output)
-        if TABLE_NAME in acl_tables:
-            data_acl_table = {TABLE_NAME: acl_tables[TABLE_NAME]}
-    except ValueError:
-        pass
-    if data_acl_table is None:
-        yield
-        return
-    # Remove DATAACL
-    logger.info("Removing ACL table {}".format(TABLE_NAME))
-    rand_selected_dut.shell(cmd="config acl remove table {}".format(TABLE_NAME))
+    duthost = duthosts[rand_one_dut_hostname]
+    create_checkpoint(duthost)
+
     yield
-    # Recover DATAACL
-    data_acl = {}
-    data_acl['ACL_TABLE'] = data_acl_table
-    cmd = 'sonic-cfggen -a \'{}\' -w'.format(json.dumps(data_acl))
-    logger.info("Restoring ACL table {}".format(TABLE_NAME))
-    rand_selected_dut.shell(cmd)
+
+    try:
+        logger.info("Rolled back to original checkpoint")
+        rollback_or_reload(duthost)
+    finally:
+        delete_checkpoint(duthost)
 
 
 def verify_expected_packet_behavior(exp_pkt, ptfadapter, setup, expect_drop):

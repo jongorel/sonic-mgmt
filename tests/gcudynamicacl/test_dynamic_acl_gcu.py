@@ -448,6 +448,27 @@ def dynamic_acl_remove_drop_rule(duthost):
     finally:
         delete_tmpfile(duthost, tmpfile)
 
+def dynamic_acl_remove_drop_rule_initial(duthost):
+    """Remove the drop rule that we just created.  Since this drop rule is the only ACL_RULE in the entire table, we must remove the entire table"""
+    json_patch = [
+        {
+            "op": "remove",
+            "path": "/ACL_RULE",
+            "value":{}
+        }
+    ]
+
+    tmpfile = generate_tmpfile(duthost)
+    logger.info("tmpfile {}".format(tmpfile))
+
+    try:
+        output = apply_patch(duthost, json_data=json_patch, dest_file=tmpfile)
+        expect_op_success(duthost, output)
+
+        expect_acl_rule_removed(duthost, "RULE_3")
+    finally:
+        delete_tmpfile(duthost, tmpfile)
+
 def dynamic_acl_replace_nonexistant_rule(duthost):
     """Verify that replacing a non-existent rule fails"""
     json_patch = [
@@ -611,7 +632,7 @@ def test_gcu_acl_drop_rule_creation(rand_selected_dut, ptfadapter, setup, dynami
 
 def test_gcu_acl_drop_rule_removal(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
     dynamic_acl_create_drop_rule_initial(rand_selected_dut, setup)
-    dynamic_acl_remove_drop_rule(rand_selected_dut)
+    dynamic_acl_remove_drop_rule_initial(rand_selected_dut)
     dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_drop_packets(setup), packets_dropped = False, src_port_blocked = True)
 
 def test_gcu_acl_forward_rule_priority_respected(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):

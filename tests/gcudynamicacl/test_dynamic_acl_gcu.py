@@ -25,11 +25,11 @@ logger = logging.getLogger(__name__)
 IP_SOURCE = "192.168.0.3"
 IPV6_SOURCE = "fc02:1000::3"
 
-DST_IP_FORWARDED = "103.23.2.1"
-DST_IPV6_FORWADED = "103:23:2:1::1"
+DST_IP_FORWARDED_ORIGINAL = "103.23.2.1"
+DST_IPV6_FORWARDED_ORIGINAL = "103:23:2:1::1"
 
 DST_IP_FORWARDED_REPLACEMENT = "103.23.2.2"
-DST_IPV6_FORWADED_REPLACEMENT = "103:23:2:2::1"
+DST_IPV6_FORWARDED_REPLACEMENT = "103:23:2:2::1"
 
 DST_IP_BLOCKED = "103.23.3.1"
 DST_IPV6_BLOCKED = "103:23:3:1::1"
@@ -47,8 +47,10 @@ def setup(rand_selected_dut, tbinfo, vlan_name):
     list_ports = mg_facts["minigraph_vlans"][vlan_name]["members"]
 
     # Selected the first vlan port as source port
-    src_port = list(mg_facts['minigraph_vlans'].values())[0]['members'][0]
-    src_port_indice = mg_facts['minigraph_ptf_indices'][src_port]
+    block_src_port = list(mg_facts['minigraph_vlans'].values())[0]['members'][0]
+    unblocked_src_port = list(mg_facts['minigraph_vlans'].values())[0]['members'][1]
+    block_src_port_indice = mg_facts['minigraph_ptf_indices'][block_src_port]
+    unblocked_src_port_indice = mg_facts['minigraph_ptf_indices'][unblocked_src_port]
     # Put all portchannel members into dst_ports
     dst_port_indices = []
     for _, v in mg_facts['minigraph_portchannels'].items():
@@ -56,8 +58,9 @@ def setup(rand_selected_dut, tbinfo, vlan_name):
             dst_port_indices.append(mg_facts['minigraph_ptf_indices'][member])
 
     setup_information = {
-        "blocked_src_port_name" : src_port,
-        "blocked_src_port_indice" : src_port_indice,
+        "blocked_src_port_name" : block_src_port,
+        "blocked_src_port_indice" : block_src_port_indice,
+        "unblocked_src_port_indice" : unblocked_src_port_indice,
         "dst_port_indices" : dst_port_indices,
         "router_mac" : router_mac,
         "bind_ports" : list_ports,
@@ -86,27 +89,30 @@ def setup_env(duthosts, rand_one_dut_hostname):
 
 
 def verify_expected_packet_behavior(exp_pkt, ptfadapter, setup, expect_drop):
+    """Verify that a packet was either dropped or forwarded"""
     if expect_drop:
         testutils.verify_no_packet_any(ptfadapter, exp_pkt, ports=setup["dst_port_indices"])
     else:
         testutils.verify_packet_any_port(ptfadapter, exp_pkt, ports=setup["dst_port_indices"],
                                         timeout=20)
 
-def generate_forward_packets(setup):
+def generate_forward_packets_original(setup):
+    """Generate packets that match the destination IP of our original forward rules"""
 
     forward_packets = {}
 
     forward_packets["IPV4"] = testutils.simple_tcp_packet(eth_dst=setup["router_mac"],
                                 ip_src=IP_SOURCE,
-                                ip_dst=DST_IP_FORWARDED)
+                                ip_dst=DST_IP_FORWARDED_ORIGINAL)
 
     forward_packets["IPV6"] = testutils.simple_tcpv6_packet(eth_dst=setup["router_mac"],
                                 ipv6_src=IPV6_SOURCE,
-                                ipv6_dst=DST_IPV6_FORWADED)
+                                ipv6_dst=DST_IPV6_FORWARDED_ORIGINAL)
 
     return forward_packets
 
-def generate_forward_replacement_packets(setup):
+def generate_forward_packets_replacement(setup):
+    """Generate packets that match the destination IP of the replacement forward rules"""
 
     forward_packets = {}
 
@@ -116,12 +122,13 @@ def generate_forward_replacement_packets(setup):
 
     forward_packets["IPV6"] = testutils.simple_tcpv6_packet(eth_dst=setup["router_mac"],
                                 ipv6_src=IPV6_SOURCE,
-                                ipv6_dst=DST_IPV6_FORWADED_REPLACEMENT)
+                                ipv6_dst=DST_IPV6_FORWARDED_REPLACEMENT)
 
     return forward_packets
 
 
 def generate_drop_packets(setup):
+    """Generate packets with a DST_IP that is never included in our forward rules"""
 
     drop_packets = {}
 
@@ -273,7 +280,7 @@ def dynamic_acl_create_table(rand_selected_dut, dynamic_acl_create_table_type, s
     dynamic_acl_remove_table(rand_selected_dut)
 
 def dynamic_acl_create_duplicate_table(duthost, setup):
-    """Create a duplicate ACL table type that should fail"""
+    """Create a duplicate ACL table type that should succeed"""
     json_patch = [
         {
             "op": "add",
@@ -299,8 +306,8 @@ def dynamic_acl_create_duplicate_table(duthost, setup):
 def dynamic_acl_create_forward_rules(duthost):
     """Create forward ACL rules"""
 
-    IPV4_SUBNET = DST_IP_FORWARDED + "/32"
-    IPV6_SUBNET = DST_IPV6_FORWADED + "/128"
+    IPV4_SUBNET = DST_IP_FORWARDED_ORIGINAL + "/32"
+    IPV6_SUBNET = DST_IPV6_FORWARDED_ORIGINAL + "/128"
 
     json_patch = [
         {
@@ -365,22 +372,33 @@ def dynamic_acl_create_drop_rule(duthost, setup):
     finally:
         delete_tmpfile(duthost, tmpfile)
 
-def dynamic_acl_verify_packets(setup, ptfadapter, packets_dropped):
+def dynamic_acl_verify_packets(setup, ptfadapter, packets, packets_dropped, src_port_blocked):
+    """Verify that the given packets are either dropped/forwarded correctly
+
+    Args:
+        packets: the packets that we are sending
+        packets_dropped: whether or not we are expecting to drop or forward these packets
+        src_port_blocked: whether or not to send it on the source port that we block in our drop rules"""
     if packets_dropped:
-        test_pkts = generate_drop_packets(setup)
         action_type = "dropped"
     else:
-        test_pkts = generate_forward_packets(setup)
         action_type = "forwarded"
-    for rule, pkt in list(test_pkts.items()):
+
+    if src_port_blocked:
+        src_port = setup["blocked_src_port_indice"]
+    else:
+        src_port = setup["unblocked_src_port_indice"]
+
+    for rule, pkt in list(packets.items()):
         logger.info("Testing that {} packets are correctly {}".format(rule, action_type))
         exp_pkt = build_exp_pkt(pkt)
         # Send and verify packet
         ptfadapter.dataplane.flush()
-        testutils.send(ptfadapter, pkt=pkt, port_id=setup["blocked_src_port_indice"]) # during forwarding, destination ip match has priority over src_port drop
+        testutils.send(ptfadapter, pkt=pkt, port_id=src_port)
         verify_expected_packet_behavior(exp_pkt, ptfadapter, setup, expect_drop=packets_dropped)
 
 def dynamic_acl_remove_drop_rule(duthost):
+    """Remove the drop rule that we just created"""
     json_patch = [
         {
             "op": "remove",
@@ -401,6 +419,7 @@ def dynamic_acl_remove_drop_rule(duthost):
         delete_tmpfile(duthost, tmpfile)
 
 def dynamic_acl_replace_nonexistant_rule(duthost):
+    """Verify that replacing a non-existent rule fails"""
     json_patch = [
         {
             "op": "replace",
@@ -423,9 +442,11 @@ def dynamic_acl_replace_nonexistant_rule(duthost):
         delete_tmpfile(duthost, tmpfile)
 
 def dynamic_acl_replace_rules(duthost):
+    """
+    Replace our forward rules on the ACL table"""
 
     REPLACEMENT_IPV4_SUBNET = DST_IP_FORWARDED_REPLACEMENT + "/32"
-    REPLACEMENT_IPV6_SUBNET = DST_IPV6_FORWADED_REPLACEMENT + "/128"
+    REPLACEMENT_IPV6_SUBNET = DST_IPV6_FORWARDED_REPLACEMENT + "/128"
 
     json_patch = [
         {
@@ -512,7 +533,7 @@ def dynamic_acl_remove_table(duthost):
         delete_tmpfile(duthost, tmpfile)
 
 def dynamic_acl_remove_nonexistant_table(duthost):
-    """Remove an ACL Table from the duthost"""
+    """Remove a nonexistent ACL Table from the duthost, verify it fails"""
     json_patch = [
         {
             "op": "remove",
@@ -552,19 +573,40 @@ def dynamic_acl_remove_table_type(duthost):
 
 
 
-def test_dynamic_acl_test(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
 
-    #dynamic_acl_create_table_type(rand_selected_dut)
-    #dynamic_acl_create_table(rand_selected_dut)
-    dynamic_acl_create_duplicate_table(rand_selected_dut, setup)
+def test_gcu_acl_drop_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
+    dynamic_acl_create_drop_rule(rand_selected_dut, setup)
+    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_drop_packets(), packets_dropped = True, src_port_blocked = True)
+    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_drop_packets(), packets_dropped = False, src_port_blocked = False)
+
+
+def test_gcu_acl_drop_rule_removal(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
+    dynamic_acl_create_drop_rule(rand_selected_dut, setup)
+    dynamic_acl_remove_drop_rule(rand_selected_dut)
+    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_drop_packets(), packets_dropped = False, src_port_blocked = True)
+
+def test_gcu_acl_forward_rule_priority_respected(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
     dynamic_acl_create_forward_rules(rand_selected_dut)
     dynamic_acl_create_drop_rule(rand_selected_dut, setup)
-    dynamic_acl_verify_packets(setup, ptfadapter, packets_dropped=True) #Verify that packets not forwarded are universally dropped
-    dynamic_acl_verify_packets(setup, ptfadapter, packets_dropped=False) #Verify that packets are correctly forwarded
-    dynamic_acl_remove_drop_rule(rand_selected_dut)
-    dynamic_acl_replace_nonexistant_rule(rand_selected_dut)
+    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_forward_packets_original(), packets_dropped = False, src_port_blocked = True)
+    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_drop_packets(), packets_dropped = True, src_port_blocked = True)
+
+def test_gcu_acl_forward_rule_replacement(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
+    dynamic_acl_create_forward_rules(rand_selected_dut)
+    dynamic_acl_create_drop_rule(rand_selected_dut, setup)
     dynamic_acl_replace_rules(rand_selected_dut)
+    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_forward_packets_replacement(), packets_dropped = False, src_port_blocked = True)
+    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_forward_packets_original(), packets_dropped = True, src_port_blocked = True)
+
+def test_gcu_acl_forward_rule_removal(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
+    dynamic_acl_create_forward_rules(rand_selected_dut)
+    dynamic_acl_create_drop_rule(rand_selected_dut, setup)
     dynamic_acl_remove_forward_rules(rand_selected_dut)
+    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_forward_packets_original(), packets_dropped = True, src_port_blocked = True)
+
+def test_gcu_acl_nonexistent_rule_replacement(rand_selected_dut):
+    dynamic_acl_replace_nonexistant_rule(rand_selected_dut)
+
+def test_gcu_acl_nonexistent_table_removal(rand_selected_dut):
     dynamic_acl_remove_nonexistant_table(rand_selected_dut)
-    #dynamic_acl_remove_table(rand_selected_dut)
-    #dynamic_acl_remove_table_type(rand_selected_dut)
+

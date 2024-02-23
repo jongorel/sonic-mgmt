@@ -345,7 +345,7 @@ def dynamic_acl_create_forward_rules(duthost):
 
 
 def dynamic_acl_create_drop_rule(duthost, setup):
-    """Create a drop rule"""
+    """Create a drop rule in the format required when an ACL table has rules in it already"""
 
     json_patch = [
         {
@@ -355,6 +355,36 @@ def dynamic_acl_create_drop_rule(duthost, setup):
                 "PRIORITY": "9997",
                 "PACKET_ACTION": "DROP",
                 "IN_PORTS": setup["blocked_src_port_name"]
+            }
+        }
+    ]
+
+    expected_rule_content = ["DYNAMIC_ACL_TABLE", "RULE_3", "9997" , "DROP", "IN_PORTS:", setup["blocked_src_port_name"]]
+
+    tmpfile = generate_tmpfile(duthost)
+    logger.info("tmpfile {}".format(tmpfile))
+
+    try:
+        output = apply_patch(duthost, json_data=json_patch, dest_file=tmpfile)
+        expect_op_success(duthost, output)
+
+        expect_acl_rule_match(duthost, "RULE_3", expected_rule_content)
+    finally:
+        delete_tmpfile(duthost, tmpfile)
+
+def dynamic_acl_create_drop_rule_initial(duthost, setup):
+    """Create a drop rule in the format required when an ACL table does not have any rules in it yet"""
+
+    json_patch = [
+        {
+            "op": "add",
+            "path": "/ACL_RULE",
+            "value": {
+                "DYNAMIC_ACL_TABLE|RULE_3": {
+                    "PRIORITY": "9997",
+                    "PACKET_ACTION": "DROP",
+                    "IN_PORTS": setup["blocked_src_port_name"],
+                }
             }
         }
     ]
@@ -486,8 +516,7 @@ def dynamic_acl_replace_rules(duthost):
 
 
 def dynamic_acl_remove_forward_rules(duthost):
-    """Remove our two forward rules from the acl table
-    As the second operation would leave the table empty, we remove the whole ACL_RULE table instead of RULE_2"""
+    """Remove our two forward rules from the acl table"""
     json_patch = [
         {
             "op": "remove",
@@ -496,7 +525,7 @@ def dynamic_acl_remove_forward_rules(duthost):
         },
         {
             "op": "remove",
-            "path": "/ACL_RULE",
+            "path": "/ACL_RULE/DYNAMIC_ACL_TABLE|RULE_2",
             "value": { }
         }
     ]
@@ -575,34 +604,34 @@ def dynamic_acl_remove_table_type(duthost):
 
 
 def test_gcu_acl_drop_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
-    dynamic_acl_create_drop_rule(rand_selected_dut, setup)
-    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_drop_packets(), packets_dropped = True, src_port_blocked = True)
-    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_drop_packets(), packets_dropped = False, src_port_blocked = False)
+    dynamic_acl_create_drop_rule_initial(rand_selected_dut, setup)
+    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_drop_packets(setup), packets_dropped = True, src_port_blocked = True)
+    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_drop_packets(setup), packets_dropped = False, src_port_blocked = False)
 
 
 def test_gcu_acl_drop_rule_removal(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
-    dynamic_acl_create_drop_rule(rand_selected_dut, setup)
+    dynamic_acl_create_drop_rule_initial(rand_selected_dut, setup)
     dynamic_acl_remove_drop_rule(rand_selected_dut)
-    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_drop_packets(), packets_dropped = False, src_port_blocked = True)
+    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_drop_packets(setup), packets_dropped = False, src_port_blocked = True)
 
 def test_gcu_acl_forward_rule_priority_respected(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
     dynamic_acl_create_forward_rules(rand_selected_dut)
     dynamic_acl_create_drop_rule(rand_selected_dut, setup)
-    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_forward_packets_original(), packets_dropped = False, src_port_blocked = True)
-    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_drop_packets(), packets_dropped = True, src_port_blocked = True)
+    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_forward_packets_original(setup), packets_dropped = False, src_port_blocked = True)
+    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_drop_packets(setup), packets_dropped = True, src_port_blocked = True)
 
 def test_gcu_acl_forward_rule_replacement(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
     dynamic_acl_create_forward_rules(rand_selected_dut)
     dynamic_acl_create_drop_rule(rand_selected_dut, setup)
     dynamic_acl_replace_rules(rand_selected_dut)
-    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_forward_packets_replacement(), packets_dropped = False, src_port_blocked = True)
-    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_forward_packets_original(), packets_dropped = True, src_port_blocked = True)
+    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_forward_packets_replacement(setup), packets_dropped = False, src_port_blocked = True)
+    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_forward_packets_original(setup), packets_dropped = True, src_port_blocked = True)
 
 def test_gcu_acl_forward_rule_removal(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
     dynamic_acl_create_forward_rules(rand_selected_dut)
     dynamic_acl_create_drop_rule(rand_selected_dut, setup)
     dynamic_acl_remove_forward_rules(rand_selected_dut)
-    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_forward_packets_original(), packets_dropped = True, src_port_blocked = True)
+    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_forward_packets_original(setup), packets_dropped = True, src_port_blocked = True)
 
 def test_gcu_acl_nonexistent_rule_replacement(rand_selected_dut):
     dynamic_acl_replace_nonexistant_rule(rand_selected_dut)

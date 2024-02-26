@@ -32,6 +32,8 @@ DST_IP_FORWARDED_REPLACEMENT = "103.23.2.2"
 DST_IPV6_FORWARDED_REPLACEMENT = "103:23:2:2::1"
 
 DST_IP_FORWARDED_STRESS_PREFIX = "103.23.4."
+DST_IPV6_FORWARDED_STRESS_PREFIX = "103:23:4:"
+
 
 DST_IP_BLOCKED = "103.23.3.1"
 DST_IPV6_BLOCKED = "103:23:3:1::1"
@@ -72,7 +74,7 @@ def setup(rand_selected_dut, tbinfo, vlan_name):
         ipv4_rule_name = "FORWARD_RULE_" + str(i)
         ipv6_rule_name = "V6_FORWARD_RULE_" + str(i)
         ipv4_address = DST_IP_FORWARDED_STRESS_PREFIX + str(i)
-        ipv6_address = DST_IP_FORWARDED_STRESS_PREFIX + str(i) + "::1"
+        ipv6_address = DST_IPV6_FORWARDED_STRESS_PREFIX + str(i) + "::1"
         stress_dest_ips[ipv4_rule_name] = ipv4_address
         stress_dest_ips[ipv6_rule_name] = ipv6_address
 
@@ -572,7 +574,7 @@ def dynamic_acl_apply_forward_stress_rules(duthost, setup):
         {
             "op": "add",
             "path": "/ACL_RULE",
-            "value": rule_vals
+            "value": value_dict
         }
     ]
 

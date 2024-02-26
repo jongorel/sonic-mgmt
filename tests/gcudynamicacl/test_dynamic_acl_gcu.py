@@ -267,7 +267,7 @@ def dynamic_acl_create_table(rand_selected_dut, dynamic_acl_create_table_type, s
     ]
 
     expected_bindings = setup["bind_ports"]
-    expected_first_line = ["DYNAMIC_ACL_TABLE", "DYNAMIC_ACL_TABLE_TYPE", setup["bind_ports"][0], "DYNAMIC_ACL_TABLE", "ingress"]
+    expected_first_line = ["DYNAMIC_ACL_TABLE", "DYNAMIC_ACL_TABLE_TYPE", setup["bind_ports"][0], "DYNAMIC_ACL_TABLE", "ingress", "Active"]
 
     tmpfile = generate_tmpfile(rand_selected_dut)
     logger.info("tmpfile {}".format(tmpfile))
@@ -560,7 +560,7 @@ def dynamic_acl_apply_forward_stress_rules(duthost, setup):
             "PACKET_ACTION" : "FORWARD"
         }
         value_dict[full_rule_name] = rule_vals
-        expected_content = ["DYNAMIC_ACL_TABLE", rule_name, priority, "FORWARD", dst_type + ":", subnet]
+        expected_content = ["DYNAMIC_ACL_TABLE", rule_name, str(priority), "FORWARD", dst_type + ":", subnet]
         expected_rule_contents[rule_name] = expected_content
         priority-=1
 
@@ -607,7 +607,7 @@ def dynamic_acl_apply_drop_stress_rules(duthost, setup):
             "value": rule_vals
         }
         json_patch.append(patch)
-        expected_content = ["DYNAMIC_ACL_TABLE", rule_name, priority, "DROP", "IN_PORTS:", port_name]
+        expected_content = ["DYNAMIC_ACL_TABLE", rule_name, str(priority), "DROP", "IN_PORTS:", port_name]
         expected_rule_contents[rule_name] = expected_content
         priority-=1
 

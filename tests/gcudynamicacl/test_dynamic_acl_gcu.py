@@ -186,10 +186,6 @@ def expect_acl_table_match_multiple_bindings(duthost, table_name, expected_first
     # Use empty list if no output
     lines = output['stdout'].splitlines()
     first_line = [] if len(lines) < 3 else lines[2].split()
-    # Ignore the status column
-    expected_len = len(expected_first_line_content)
-    if len(first_line) >= expected_len:
-        first_line = first_line[0:expected_len]
 
     pytest_assert(set(expected_first_line_content) == set(first_line), "ACL table definition doesn't match")
     bindings = [line.strip() for line in lines[3:]]
@@ -201,13 +197,12 @@ def expect_acl_table_match_multiple_bindings(duthost, table_name, expected_first
 def expect_acl_rule_match(duthost, rulename, expected_content_list):
     """Check if acl rule shows as expected"""
 
-    cmds = "show acl rule | grep {}".format(rulename)
+    cmds = "show acl rule DYNAMIC_ACL_TABLE {}".format(rulename)
     output = duthost.shell(cmds)
     pytest_assert(not output['rc'], "'{}' failed with rc={}".format(cmds, output['rc']))
 
     lines = output['stdout'].splitlines()
-    actual_list = lines[0].split()
-
+    actual_list = [] if len(lines) < 3 else lines[2].split()
     # Ignore the status column
     expected_len = len(expected_content_list)
     if len(actual_list) >= expected_len:
@@ -218,7 +213,7 @@ def expect_acl_rule_match(duthost, rulename, expected_content_list):
 def expect_acl_rule_removed(duthost, rulename):
     """Check if ACL rule has been successfully removed"""
 
-    cmds = "show acl rule {}".format(rulename)
+    cmds = "show acl rule DYNAMIC_ACL_TABLE {}".format(rulename)
     output = duthost.shell(cmds)
 
     removed = len(output['stdout'].splitlines()) <= 2

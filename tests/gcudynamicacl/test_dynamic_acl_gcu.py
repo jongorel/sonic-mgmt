@@ -1,5 +1,7 @@
 import logging
 import pytest
+import os
+import json
 
 from tests.common.helpers.assertions import pytest_assert
 
@@ -18,6 +20,14 @@ pytestmark = [
 ]
 
 logger = logging.getLogger(__name__)
+
+BASE_DIR = os.path.dirname(os.path.realpath(__file__))
+FILES_DIR = os.path.join(BASE_DIR, "files")
+TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
+TMP_DIR = '/tmp'
+
+CREATE_CUSTOM_TABLE_TYPE_FILE = "create_custom_table_type.json"
+CREATE_CUSTOM_TABLE_TEMPLATE = "create_custom_table.j2"
 
 IP_SOURCE = "192.168.0.3"
 IPV6_SOURCE = "fc02:1000::3"
@@ -166,9 +176,9 @@ def expect_acl_table_match_multiple_bindings(duthost, table_name, expected_first
 
     first_line = output[0]
     pytest_assert(set(first_line.values()) == set(expected_first_line_content))
-    table_bindings = [first_line["Binding"]]
+    table_bindings = [first_line["binding"]]
     for i in range(len(output)):
-        table_bindings.append(output[i]["Binding"])
+        table_bindings.append(output[i]["binding"])
     pytest_assert(set(table_bindings) == set(expected_bindings), "ACL Table bindings don't fully match")
 
 def expect_acl_rule_match(duthost, rulename, expected_content_list):
@@ -196,19 +206,8 @@ def expect_acl_rule_removed(duthost, rulename):
 @pytest.fixture(scope="module")
 def dynamic_acl_create_table_type(rand_selected_dut):
     """Create a new ACL table type that can be used"""
-    json_patch = [
-        {
-            "op": "add",
-            "path": "/ACL_TABLE_TYPE",
-            "value": {
-                "DYNAMIC_ACL_TABLE_TYPE" : {
-                "MATCHES": ["DST_IP","DST_IPV6","ETHER_TYPE","IN_PORTS"],
-                "ACTIONS": ["PACKET_ACTION","COUNTER"],
-                "BIND_POINTS": ["PORT"]
-                }
-            }
-        }
-    ]
+    with open(os.path.join(TEMPLATES_DIR, CREATE_CUSTOM_TABLE_TYPE_FILE)) as file:
+        json_patch = json.load(file)
 
     tmpfile = generate_tmpfile(rand_selected_dut)
     logger.info("tmpfile {}".format(tmpfile))
@@ -226,32 +225,30 @@ def dynamic_acl_create_table_type(rand_selected_dut):
 @pytest.fixture(scope="module")
 def dynamic_acl_create_table(rand_selected_dut, dynamic_acl_create_table_type, setup):
     """Create a new ACL table type that can be used"""
-    json_patch = [
-        {
-            "op": "add",
-            "path": "/ACL_TABLE/DYNAMIC_ACL_TABLE",
-            "value": {
-                "policy_desc": "DYNAMIC_ACL_TABLE",
-                "type": "DYNAMIC_ACL_TABLE_TYPE",
-                "stage": "INGRESS",
-                "ports": setup["bind_ports"]
-            }
+
+    extra_vars = {
+        'bind_ports': setup['bind_ports']
         }
-    ]
+    dest_path = os.path.join(TMP_DIR, CREATE_CUSTOM_TABLE_TEMPLATE)
+    rand_selected_dut.host.options['variable_manager'].extra_vars.update(extra_vars)
+    rand_selected_dut.file(path=dest_path, state='absent')
+    rand_selected_dut.template(src=os.path.join(TEMPLATES_DIR, CREATE_CUSTOM_TABLE_TEMPLATE), dest=dest_path)
+
+    output = rand_selected_dut.shell("config load -y {}".format(dest_path))
 
     expected_bindings = setup["bind_ports"]
     expected_first_line = ["DYNAMIC_ACL_TABLE", "DYNAMIC_ACL_TABLE_TYPE", setup["bind_ports"][0], "DYNAMIC_ACL_TABLE", "ingress", "Active"]
 
-    tmpfile = generate_tmpfile(rand_selected_dut)
-    logger.info("tmpfile {}".format(tmpfile))
+    #tmpfile = generate_tmpfile(rand_selected_dut)
+    #logger.info("tmpfile {}".format(tmpfile))
 
-    try:
-        output = apply_patch(rand_selected_dut, json_data=json_patch, dest_file=tmpfile)
-        expect_op_success(rand_selected_dut, output)
+    #try:
+        #output = apply_patch(rand_selected_dut, json_data=json_patch, dest_file=tmpfile)
+    expect_op_success(rand_selected_dut, output)
 
-        expect_acl_table_match_multiple_bindings(rand_selected_dut, "DYNAMIC_ACL_TABLE", expected_first_line, expected_bindings)
-    finally:
-        delete_tmpfile(rand_selected_dut, tmpfile)
+    expect_acl_table_match_multiple_bindings(rand_selected_dut, "DYNAMIC_ACL_TABLE", expected_first_line, expected_bindings)
+    #finally:
+        #delete_tmpfile(rand_selected_dut, tmpfile)
 
     yield
 

@@ -31,8 +31,8 @@ DST_IPV6_FORWARDED_ORIGINAL = "103:23:2:1::1"
 DST_IP_FORWARDED_REPLACEMENT = "103.23.2.2"
 DST_IPV6_FORWARDED_REPLACEMENT = "103:23:2:2::1"
 
-DST_IP_FORWARDED_STRESS_PREFIX = "103.23.4."
-DST_IPV6_FORWARDED_STRESS_PREFIX = "103:23:4:"
+DST_IP_FORWARDED_scale_PREFIX = "103.23.4."
+DST_IPV6_FORWARDED_scale_PREFIX = "103:23:4:"
 
 
 DST_IP_BLOCKED = "103.23.3.1"
@@ -58,33 +58,33 @@ def setup(rand_selected_dut, tbinfo, vlan_name):
     vlan_ports = list(mg_facts['minigraph_vlans'].values())[0]['members']
     block_src_port = vlan_ports[0]
     unblocked_src_port = vlan_ports[1]
-    stress_ports = vlan_ports[len(vlan_ports)//2:]
+    scale_ports = vlan_ports[:]
     block_src_port_indice = mg_facts['minigraph_ptf_indices'][block_src_port]
     unblocked_src_port_indice = mg_facts['minigraph_ptf_indices'][unblocked_src_port]
-    stress_ports_indices = [mg_facts ['minigraph_ptf_indices'][port_name] for port_name in stress_ports]
+    scale_ports_indices = [mg_facts ['minigraph_ptf_indices'][port_name] for port_name in scale_ports]
     # Put all portchannel members into dst_ports
     dst_port_indices = []
     for _, v in mg_facts['minigraph_portchannels'].items():
         for member in v['members']:
             dst_port_indices.append(mg_facts['minigraph_ptf_indices'][member])
 
-    # Generate destination IP's for stress test
-    stress_dest_ips = {}
-    for i in range(1,51):
+    # Generate destination IP's for scale test
+    scale_dest_ips = {}
+    for i in range(1,75):
         ipv4_rule_name = "FORWARD_RULE_" + str(i)
         ipv6_rule_name = "V6_FORWARD_RULE_" + str(i)
-        ipv4_address = DST_IP_FORWARDED_STRESS_PREFIX + str(i)
-        ipv6_address = DST_IPV6_FORWARDED_STRESS_PREFIX + str(i) + "::1"
-        stress_dest_ips[ipv4_rule_name] = ipv4_address
-        stress_dest_ips[ipv6_rule_name] = ipv6_address
+        ipv4_address = DST_IP_FORWARDED_scale_PREFIX + str(i)
+        ipv6_address = DST_IPV6_FORWARDED_scale_PREFIX + str(i) + "::1"
+        scale_dest_ips[ipv4_rule_name] = ipv4_address
+        scale_dest_ips[ipv6_rule_name] = ipv6_address
 
     setup_information = {
         "blocked_src_port_name" : block_src_port,
         "blocked_src_port_indice" : block_src_port_indice,
         "unblocked_src_port_indice" : unblocked_src_port_indice,
-        "stress_port_names" : stress_ports,
-        "stress_port_indices" : stress_ports_indices,
-        "stress_dest_ips" : stress_dest_ips,
+        "scale_port_names" : scale_ports,
+        "scale_port_indices" : scale_ports_indices,
+        "scale_dest_ips" : scale_dest_ips,
         "dst_port_indices" : dst_port_indices,
         "router_mac" : router_mac,
         "bind_ports" : list_ports,
@@ -539,14 +539,14 @@ def dynamic_acl_replace_rules(duthost):
     finally:
         delete_tmpfile(duthost, tmpfile)
 
-def dynamic_acl_apply_forward_stress_rules(duthost, setup):
+def dynamic_acl_apply_forward_scale_rules(duthost, setup):
     """Apply a large amount of forward rules to the duthost"""
 
     priority = MAX_RULE_PRIORITY
     value_dict = {}
     expected_rule_contents = {}
 
-    for rule_name, dest_ip in setup["stress_dest_ips"].items():
+    for rule_name, dest_ip in setup["scale_dest_ips"].items():
         if "V6" in rule_name:
             subnet = dest_ip + "/128"
             dst_type = "DST_IPV6"
@@ -586,7 +586,7 @@ def dynamic_acl_apply_forward_stress_rules(duthost, setup):
     finally:
         delete_tmpfile(duthost, tmpfile)
 
-def dynamic_acl_apply_drop_stress_rules(duthost, setup):
+def dynamic_acl_apply_drop_scale_rules(duthost, setup):
     """Apply a large amount of drop rules to the duthost"""
 
     priority = MAX_DROP_RULE_PRIORITY
@@ -594,8 +594,9 @@ def dynamic_acl_apply_drop_stress_rules(duthost, setup):
     expected_rule_contents = {}
     rule_number = 1
 
-    for port_name in setup["stress_port_names"]:
-        full_rule_name = "/ACL_RULE/DYNAMIC_ACL_TABLE|DROP_RULE_" + rule_number
+    for port_name in setup["scale_port_names"]:
+        rule_name = "DROP_RULE_" + str(rule_number)
+        full_rule_name = "/ACL_RULE/DYNAMIC_ACL_TABLE|"+rule_name
         rule_vals = {
             "PRIORITY" : str(priority),
             "PACKET_ACTION" : "DROP",
@@ -609,7 +610,8 @@ def dynamic_acl_apply_drop_stress_rules(duthost, setup):
         json_patch.append(patch)
         expected_content = ["DYNAMIC_ACL_TABLE", rule_name, str(priority), "DROP", "IN_PORTS:", port_name]
         expected_rule_contents[rule_name] = expected_content
-        priority-=1
+        priority -= 1
+        rule_number += 1
 
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {}".format(tmpfile))
@@ -750,23 +752,23 @@ def test_gcu_acl_forward_rule_removal(rand_selected_dut, ptfadapter, setup, dyna
     dynamic_acl_remove_forward_rules(rand_selected_dut)
     dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_forward_packets(setup), packets_dropped = True)
 
-def test_gcu_acl_stress_rules(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
-    dynamic_acl_apply_forward_stress_rules(rand_selected_dut, setup)
-    dynamic_acl_apply_drop_stress_rules(rand_selected_dut, setup)
+def test_gcu_acl_scale_rules(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
+    dynamic_acl_apply_forward_scale_rules(rand_selected_dut, setup)
+    dynamic_acl_apply_drop_scale_rules(rand_selected_dut, setup)
 
-    #select one of our src ports blocked by these stress rules
-    blocked_stress_port = setup["stress_port_indices"][0]
+    #select one of our src ports blocked by these scale rules
+    blocked_scale_port = setup["scale_port_indices"][0]
 
     #select ipv4 and ipv6 destination ips from our forwarding rules
-    v4_dest = setup["stress_dest_ips"]["FORWARD_RULE_10"]
-    v6_dest = setup["stress_dest_ips"]["V6_FORWARD_RULE_10"]
+    v4_dest = setup["scale_dest_ips"]["FORWARD_RULE_10"]
+    v6_dest = setup["scale_dest_ips"]["V6_FORWARD_RULE_10"]
 
     dynamic_acl_verify_packets(setup,
                                ptfadapter,
                                generate_forward_packets(setup, v4_dest, v6_dest),
                                packets_dropped = False,
-                               src_port = blocked_stress_port) #verify forward rules are still respected
-    dynamic_acl_verify_packets(setup, ptfadapter, generate_drop_packets(setup), packets_dropped = True, src_port = blocked_stress_port)
+                               src_port = blocked_scale_port) #verify forward rules are still respected
+    dynamic_acl_verify_packets(setup, ptfadapter, generate_drop_packets(setup), packets_dropped = True, src_port = blocked_scale_port)
 
 
 def test_gcu_acl_nonexistent_rule_replacement(rand_selected_dut):

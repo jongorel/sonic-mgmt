@@ -27,7 +27,7 @@ TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 TMP_DIR = '/tmp'
 
 CREATE_CUSTOM_TABLE_TYPE_FILE = "create_custom_table_type.json"
-CREATE_CUSTOM_TABLE_TEMPLATE = "create_custom_table.j2"
+CREATE_CUSTOM_TABLE_TEMPLATE = "create_custom_table.json"
 
 IP_SOURCE = "192.168.0.3"
 IPV6_SOURCE = "fc02:1000::3"
@@ -157,6 +157,19 @@ def build_exp_pkt(input_pkt):
 
     return exp_pkt
 
+def format_and_apply_template(duthost, template_name, extra_vars):
+    dest_path = os.path.join(TMP_DIR, CREATE_CUSTOM_TABLE_TEMPLATE)
+    duthost.host.options['variable_manager'].extra_vars.update(extra_vars)
+    duthost.file(path=dest_path, state='absent')
+    duthost.template(src=os.path.join(TEMPLATES_DIR, CREATE_CUSTOM_TABLE_TEMPLATE), dest=dest_path)
+
+    duthost.shell("sed -i \"s/'/\\\"/g\" " + dest_path) #duthost.template uses single quotes, which breaks apply-patch.  this replaces them with double quotes
+
+    output = duthost.shell("config apply-patch {}".format(dest_path))
+    yield output
+
+    duthost.file(path=dest_path, state='absent')
+
 def expect_acl_table_match_multiple_bindings(duthost, table_name, expected_first_line_content, expected_bindings):
     """Check if acl table show as expected
     Acl table with multiple bindings will show as such
@@ -229,12 +242,8 @@ def dynamic_acl_create_table(rand_selected_dut, dynamic_acl_create_table_type, s
     extra_vars = {
         'bind_ports': setup['bind_ports']
         }
-    dest_path = os.path.join(TMP_DIR, CREATE_CUSTOM_TABLE_TEMPLATE)
-    rand_selected_dut.host.options['variable_manager'].extra_vars.update(extra_vars)
-    rand_selected_dut.file(path=dest_path, state='absent')
-    rand_selected_dut.template(src=os.path.join(TEMPLATES_DIR, CREATE_CUSTOM_TABLE_TEMPLATE), dest=dest_path)
 
-    output = rand_selected_dut.shell("config load -y {}".format(dest_path))
+    output = format_and_apply_template(rand_selected_dut, CREATE_CUSTOM_TABLE_TEMPLATE, extra_vars)
 
     expected_bindings = setup["bind_ports"]
     expected_first_line = ["DYNAMIC_ACL_TABLE", "DYNAMIC_ACL_TABLE_TYPE", setup["bind_ports"][0], "DYNAMIC_ACL_TABLE", "ingress", "Active"]

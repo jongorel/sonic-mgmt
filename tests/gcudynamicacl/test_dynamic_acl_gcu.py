@@ -152,6 +152,7 @@ def build_exp_pkt(input_pkt):
     exp_pkt.set_do_not_care_scapy(scapy.Ether, "src")
     if input_pkt.haslayer('IP'):
         exp_pkt.set_do_not_care_scapy(scapy.IP, "chksum")
+        exp_pkt.set_do_not_care_scapy(scapy.IP, "ttl")
     else:
         exp_pkt.set_do_not_care_scapy(scapy.IPv6, "hlim")
 

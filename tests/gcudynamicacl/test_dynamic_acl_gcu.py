@@ -31,15 +31,18 @@ CREATE_CUSTOM_TABLE_TEMPLATE = "create_custom_table.j2"
 CREATE_FORWARD_RULES_TEMPLATE = "create_forward_rules.j2"
 CREATE_INITIAL_DROP_RULE_TEMPLATE = "create_initial_drop_rule.j2"
 CREATE_SECONDARY_DROP_RULE_TEMPLATE = "create_secondary_drop_rule.j2"
+CREATE_THREE_DROP_RULES_TEMPLATE = "create_three_drop_rules.j2"
 REPLACE_RULES_TEMPLATE = "replace_rules.j2"
 REPLACE_NONEXSITENT_RULE_FILE = "replace_nonexistent_rule.json"
 REMOVE_ONLY_DROP_RULE_FILE = "remove_only_drop_rule.json"
+REMOVE_THIRD_DROP_RULE_FILE = "remove_third_drop_rule.json"
 REMOVE_SECONDARY_DROP_RULE_FILE = "remove_secondary_drop_rule.json"
 REMOVE_FORWARD_RULES_FILE = "remove_forward_rules.json"
+REMOVE_IPV4_FORWARD_RULE_FILE = "remove_ipv4_forward_rule.json"
 CREATE_FORWARD_SCALE_RULES_TEMPLATE = "create_forward_scale.j2"
 CREATE_DROP_SCALE_RULES_TEMPLATE = "create_drop_scale.j2"
 REMOVE_TABLE_FILE = "remove_table.json"
-REMOVE_NONEXISTENT_TABLE_FILE = "remove_table.json"
+REMOVE_NONEXISTENT_TABLE_FILE = "remove_nonexistent_table.json"
 REMOVE_TABLE_TYPE_FILE = "remove_table_type.json"
 
 
@@ -52,8 +55,8 @@ DST_IPV6_FORWARDED_ORIGINAL = "103:23:2:1::1"
 DST_IP_FORWARDED_REPLACEMENT = "103.23.2.2"
 DST_IPV6_FORWARDED_REPLACEMENT = "103:23:2:2::1"
 
-DST_IP_FORWARDED_scale_PREFIX = "103.23.4."
-DST_IPV6_FORWARDED_scale_PREFIX = "103:23:4:"
+DST_IP_FORWARDED_SCALE_PREFIX = "103.23.4."
+DST_IPV6_FORWARDED_SCALE_PREFIX = "103:23:4:"
 
 
 DST_IP_BLOCKED = "103.23.3.1"
@@ -94,8 +97,8 @@ def setup(rand_selected_dut, tbinfo, vlan_name):
     for i in range(1,75):
         ipv4_rule_name = "FORWARD_RULE_" + str(i)
         ipv6_rule_name = "V6_FORWARD_RULE_" + str(i)
-        ipv4_address = DST_IP_FORWARDED_scale_PREFIX + str(i)
-        ipv6_address = DST_IPV6_FORWARDED_scale_PREFIX + str(i) + "::1"
+        ipv4_address = DST_IP_FORWARDED_SCALE_PREFIX + str(i)
+        ipv6_address = DST_IPV6_FORWARDED_SCALE_PREFIX + str(i) + "::1"
         scale_dest_ips[ipv4_rule_name] = ipv4_address
         scale_dest_ips[ipv6_rule_name] = ipv6_address
 
@@ -339,6 +342,28 @@ def dynamic_acl_create_drop_rule_initial(duthost, setup):
 
     expect_acl_rule_match(duthost, "RULE_3", expected_rule_content)
 
+def dynamic_acl_create_three_drop_rules(duthost, setup):
+    """Create 3 drop rules in the format required when an ACL table does not have any rules in it yet"""
+
+    extra_vars = {
+        'blocked_port_1': setup["scale_port_names"][0],
+        'blocked_port_2': setup["scale_port_names"][1],
+        'blocked_port_3': setup["scale_port_names"][2]
+
+    }
+
+    output = format_and_apply_template(duthost, CREATE_THREE_DROP_RULES_TEMPLATE, extra_vars)
+
+    expected_rule_3_content = ["DYNAMIC_ACL_TABLE", "RULE_3", "9997" , "DROP", "IN_PORTS: " + extra_vars['blocked_port_1'], "Active"]
+    expected_rule_4_content = ["DYNAMIC_ACL_TABLE", "RULE_4", "9997" , "DROP", "IN_PORTS: " + extra_vars['blocked_port_2'], "Active"]
+    expected_rule_5_content = ["DYNAMIC_ACL_TABLE", "RULE_5", "9997" , "DROP", "IN_PORTS: " + extra_vars['blocked_port_3'], "Active"]
+
+    expect_op_success(duthost, output)
+
+    expect_acl_rule_match(duthost, "RULE_3", expected_rule_3_content)
+    expect_acl_rule_match(duthost, "RULE_4", expected_rule_4_content)
+    expect_acl_rule_match(duthost, "RULE_5", expected_rule_5_content)
+
 def dynamic_acl_verify_packets(setup, ptfadapter, packets, packets_dropped, src_port = None):
     """Verify that the given packets are either dropped/forwarded correctly
 
@@ -363,10 +388,9 @@ def dynamic_acl_verify_packets(setup, ptfadapter, packets, packets_dropped, src_
         testutils.send(ptfadapter, pkt=pkt, port_id=src_port)
         verify_expected_packet_behavior(exp_pkt, ptfadapter, setup, expect_drop=packets_dropped)
 
-def dynamic_acl_remove_drop_rule(duthost):
-    """Remove the drop rule that we just created"""
-
-    with open(os.path.join(TEMPLATES_DIR, REMOVE_SECONDARY_DROP_RULE_FILE)) as file:
+def dynamic_acl_remove_third_drop_rule(duthost):
+    """Remove the third drop rule of the three created for the drop rule removal test"""
+    with open(os.path.join(TEMPLATES_DIR, REMOVE_THIRD_DROP_RULE_FILE)) as file:
         json_patch = json.load(file)
 
     tmpfile = generate_tmpfile(duthost)
@@ -376,24 +400,7 @@ def dynamic_acl_remove_drop_rule(duthost):
         output = apply_patch(duthost, json_data=json_patch, dest_file=tmpfile)
         expect_op_success(duthost, output)
 
-        expect_acl_rule_removed(duthost, "RULE_3")
-    finally:
-        delete_tmpfile(duthost, tmpfile)
-
-def dynamic_acl_remove_drop_rule_initial(duthost):
-    """Remove the drop rule that we just created.  Since this drop rule is the only ACL_RULE in the entire table, we must remove the entire table"""
-
-    with open(os.path.join(TEMPLATES_DIR, REMOVE_ONLY_DROP_RULE_FILE)) as file:
-        json_patch = json.load(file)
-
-    tmpfile = generate_tmpfile(duthost)
-    logger.info("tmpfile {}".format(tmpfile))
-
-    try:
-        output = apply_patch(duthost, json_data=json_patch, dest_file=tmpfile)
-        expect_op_success(duthost, output)
-
-        expect_acl_rule_removed(duthost, "RULE_3")
+        expect_acl_rule_removed(duthost, "RULE_5")
     finally:
         delete_tmpfile(duthost, tmpfile)
 
@@ -520,11 +527,10 @@ def dynamic_acl_apply_drop_scale_rules(duthost, setup):
     finally:
         delete_tmpfile(duthost, tmpfile)
 
-
-def dynamic_acl_remove_forward_rules(duthost):
+def dynamic_acl_remove_ipv4_forward_rule(duthost):
     """Remove our two forward rules from the acl table"""
 
-    with open(os.path.join(TEMPLATES_DIR, REMOVE_FORWARD_RULES_FILE)) as file:
+    with open(os.path.join(TEMPLATES_DIR, REMOVE_IPV4_FORWARD_RULE_FILE)) as file:
         json_patch = json.load(file)
 
     tmpfile = generate_tmpfile(duthost)
@@ -535,7 +541,6 @@ def dynamic_acl_remove_forward_rules(duthost):
         expect_op_success(duthost, output)
 
         expect_acl_rule_removed(duthost, "RULE_1")
-        expect_acl_rule_removed(duthost, "RULE_2")
     finally:
         delete_tmpfile(duthost, tmpfile)
 
@@ -602,9 +607,9 @@ def test_gcu_acl_drop_rule_creation(rand_selected_dut, ptfadapter, setup, dynami
 def test_gcu_acl_drop_rule_removal(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
     """Test that once a drop rule is removed, packets that were previously being dropped are now forwarded"""
 
-    dynamic_acl_create_drop_rule_initial(rand_selected_dut, setup)
-    dynamic_acl_remove_drop_rule_initial(rand_selected_dut)
-    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_packets(setup, DST_IP_BLOCKED, DST_IPV6_BLOCKED), packets_dropped = False)
+    dynamic_acl_create_three_drop_rules(rand_selected_dut, setup)
+    dynamic_acl_remove_third_drop_rule(rand_selected_dut)
+    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_packets(setup, DST_IP_BLOCKED, DST_IPV6_BLOCKED), packets_dropped = False, src_port = setup["scale_port_indices"][2])
 
 def test_gcu_acl_forward_rule_priority_respected(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
     """Test that forward rules and drop rules can be created at the same time, with the forward rules having higher priority than drop.
@@ -632,7 +637,9 @@ def test_gcu_acl_forward_rule_removal(rand_selected_dut, ptfadapter, setup, dyna
     """Test that if a forward rule is created, and then removed, that packets associated with that rule are properly no longer forwarded"""
     dynamic_acl_create_forward_rules(rand_selected_dut)
     dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
-    dynamic_acl_remove_forward_rules(rand_selected_dut)
+    dynamic_acl_remove_ipv4_forward_rule(rand_selected_dut)
+    packets = generate_packets(setup)
+    packets.pop('IPV6') ##generate_packets generates packets for both ipv4 and ipv6, but we have only removed the ipv4 rule and therefore only want to test the ipv4 rule
     dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_packets(setup), packets_dropped = True)
 
 def test_gcu_acl_scale_rules(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):

@@ -355,8 +355,8 @@ def dynamic_acl_create_three_drop_rules(duthost, setup):
     output = format_and_apply_template(duthost, CREATE_THREE_DROP_RULES_TEMPLATE, extra_vars)
 
     expected_rule_3_content = ["DYNAMIC_ACL_TABLE", "RULE_3", "9997" , "DROP", "IN_PORTS: " + extra_vars['blocked_port_1'], "Active"]
-    expected_rule_4_content = ["DYNAMIC_ACL_TABLE", "RULE_4", "9997" , "DROP", "IN_PORTS: " + extra_vars['blocked_port_2'], "Active"]
-    expected_rule_5_content = ["DYNAMIC_ACL_TABLE", "RULE_5", "9997" , "DROP", "IN_PORTS: " + extra_vars['blocked_port_3'], "Active"]
+    expected_rule_4_content = ["DYNAMIC_ACL_TABLE", "RULE_4", "9996" , "DROP", "IN_PORTS: " + extra_vars['blocked_port_2'], "Active"]
+    expected_rule_5_content = ["DYNAMIC_ACL_TABLE", "RULE_5", "9995" , "DROP", "IN_PORTS: " + extra_vars['blocked_port_3'], "Active"]
 
     expect_op_success(duthost, output)
 
@@ -640,11 +640,11 @@ def test_gcu_acl_forward_rule_removal(rand_selected_dut, ptfadapter, setup, dyna
     dynamic_acl_remove_ipv4_forward_rule(rand_selected_dut)
     packets = generate_packets(setup)
     packets.pop('IPV6') ##generate_packets generates packets for both ipv4 and ipv6, but we have only removed the ipv4 rule and therefore only want to test the ipv4 rule
-    dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_packets(setup), packets_dropped = True)
+    dynamic_acl_verify_packets(setup, ptfadapter, packets, packets_dropped = True)
 
 def test_gcu_acl_scale_rules(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
-    """Perform a scale test, creating 150 forward rules with top priority, and then creating a drop rule for every single VLAN port on our device
-    Select any one of our blocked ports, as well as the ips for two of our forward rules, and confirm that packet forwarding and dropping works as expeted even
+    """Perform a scale test, creating 150 forward rules with top priority, and then creating a drop rule for every single VLAN port on our device.
+    Select any one of our blocked ports, as well as the ips for two of our forward rules, and confirm that packet forwarding and dropping works as expected even
     with this large amount of rules"""
 
     dynamic_acl_apply_forward_scale_rules(rand_selected_dut, setup)

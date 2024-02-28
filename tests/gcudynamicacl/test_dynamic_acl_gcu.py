@@ -314,8 +314,8 @@ def dynamic_acl_create_forward_rules(duthost):
         }
     ]
 
-    expected_rule_1_content = ["DYNAMIC_ACL_TABLE", "RULE_1", "9999", "FORWARD", "DST_IP: " + IPV4_SUBNET]
-    expected_rule_2_content = ["DYNAMIC_ACL_TABLE", "RULE_2", "9998", "FORWARD", "DST_IPV6: " + IPV6_SUBNET]
+    expected_rule_1_content = ["DYNAMIC_ACL_TABLE", "RULE_1", "9999", "FORWARD", "DST_IP: " + IPV4_SUBNET, "Active"]
+    expected_rule_2_content = ["DYNAMIC_ACL_TABLE", "RULE_2", "9998", "FORWARD", "DST_IPV6: " + IPV6_SUBNET, "Active"]
 
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {}".format(tmpfile))
@@ -345,7 +345,7 @@ def dynamic_acl_create_drop_rule(duthost, setup):
         }
     ]
 
-    expected_rule_content = ["DYNAMIC_ACL_TABLE", "RULE_3", "9997" , "DROP", "IN_PORTS: " + setup["blocked_src_port_name"]]
+    expected_rule_content = ["DYNAMIC_ACL_TABLE", "RULE_3", "9997" , "DROP", "IN_PORTS: " + setup["blocked_src_port_name"], "Active"]
 
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {}".format(tmpfile))
@@ -375,7 +375,7 @@ def dynamic_acl_create_drop_rule_initial(duthost, setup):
         }
     ]
 
-    expected_rule_content = ["DYNAMIC_ACL_TABLE", "RULE_3", "9997" , "DROP", "IN_PORTS: " + setup["blocked_src_port_name"]]
+    expected_rule_content = ["DYNAMIC_ACL_TABLE", "RULE_3", "9997" , "DROP", "IN_PORTS: " + setup["blocked_src_port_name"], "Active"]
 
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {}".format(tmpfile))
@@ -505,8 +505,8 @@ def dynamic_acl_replace_rules(duthost):
         }
     ]
 
-    expected_rule_1_content = ["DYNAMIC_ACL_TABLE", "RULE_1", "9999", "FORWARD", "DST_IP:" + REPLACEMENT_IPV4_SUBNET]
-    expected_rule_2_content = ["DYNAMIC_ACL_TABLE", "RULE_2", "9998", "FORWARD", "DST_IPV6:" + REPLACEMENT_IPV6_SUBNET]
+    expected_rule_1_content = ["DYNAMIC_ACL_TABLE", "RULE_1", "9999", "FORWARD", "DST_IP:" + REPLACEMENT_IPV4_SUBNET, "Active"]
+    expected_rule_2_content = ["DYNAMIC_ACL_TABLE", "RULE_2", "9998", "FORWARD", "DST_IPV6:" + REPLACEMENT_IPV6_SUBNET, "Active"]
 
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {}".format(tmpfile))
@@ -541,7 +541,7 @@ def dynamic_acl_apply_forward_scale_rules(duthost, setup):
             "PACKET_ACTION" : "FORWARD"
         }
         value_dict[full_rule_name] = rule_vals
-        expected_content = ["DYNAMIC_ACL_TABLE", rule_name, str(priority), "FORWARD", dst_type + ": " + subnet]
+        expected_content = ["DYNAMIC_ACL_TABLE", rule_name, str(priority), "FORWARD", dst_type + ": " + subnet, "Active"]
         expected_rule_contents[rule_name] = expected_content
         priority-=1
 
@@ -589,7 +589,7 @@ def dynamic_acl_apply_drop_scale_rules(duthost, setup):
             "value": rule_vals
         }
         json_patch.append(patch)
-        expected_content = ["DYNAMIC_ACL_TABLE", rule_name, str(priority), "DROP", "IN_PORTS: " + port_name]
+        expected_content = ["DYNAMIC_ACL_TABLE", rule_name, str(priority), "DROP", "IN_PORTS: " + port_name, "Active"]
         expected_rule_contents[rule_name] = expected_content
         priority -= 1
         rule_number += 1

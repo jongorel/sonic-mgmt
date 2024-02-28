@@ -149,11 +149,13 @@ def generate_packets(setup, dst_ip = DST_IP_FORWARDED_ORIGINAL, dst_ipv6 = DST_I
 
     packets["IPV4"] = testutils.simple_tcp_packet(eth_dst=setup["router_mac"],
                                 ip_src=IP_SOURCE,
-                                ip_dst=dst_ip)
+                                ip_dst=dst_ip,
+                                ip_ttl = 64)
 
     packets["IPV6"] = testutils.simple_tcpv6_packet(eth_dst=setup["router_mac"],
                                 ipv6_src=IPV6_SOURCE,
-                                ipv6_dst=dst_ipv6)
+                                ipv6_dst=dst_ipv6,
+                                ip_ttl = 64)
 
     return packets
 
@@ -162,7 +164,7 @@ def build_exp_pkt(input_pkt):
     Generate the expected packet for given packet
     """
     pkt_copy = input_pkt.copy()
-    pkt_copy.ttl = pkt_copy.ttl -1
+    pkt_copy['IP'].ttl = pkt_copy['IP'].ttl -1
     exp_pkt = Mask(pkt_copy)
     exp_pkt.set_do_not_care_scapy(scapy.Ether, "dst")
     exp_pkt.set_do_not_care_scapy(scapy.Ether, "src")

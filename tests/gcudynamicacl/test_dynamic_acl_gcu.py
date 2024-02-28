@@ -33,14 +33,9 @@ CREATE_INITIAL_DROP_RULE_TEMPLATE = "create_initial_drop_rule.j2"
 CREATE_SECONDARY_DROP_RULE_TEMPLATE = "create_secondary_drop_rule.j2"
 CREATE_THREE_DROP_RULES_TEMPLATE = "create_three_drop_rules.j2"
 REPLACE_RULES_TEMPLATE = "replace_rules.j2"
-REPLACE_NONEXSITENT_RULE_FILE = "replace_nonexistent_rule.json"
-REMOVE_ONLY_DROP_RULE_FILE = "remove_only_drop_rule.json"
+REPLACE_NONEXISTENT_RULE_FILE = "replace_nonexistent_rule.json"
 REMOVE_THIRD_DROP_RULE_FILE = "remove_third_drop_rule.json"
-REMOVE_SECONDARY_DROP_RULE_FILE = "remove_secondary_drop_rule.json"
-REMOVE_FORWARD_RULES_FILE = "remove_forward_rules.json"
 REMOVE_IPV4_FORWARD_RULE_FILE = "remove_ipv4_forward_rule.json"
-CREATE_FORWARD_SCALE_RULES_TEMPLATE = "create_forward_scale.j2"
-CREATE_DROP_SCALE_RULES_TEMPLATE = "create_drop_scale.j2"
 REMOVE_TABLE_FILE = "remove_table.json"
 REMOVE_NONEXISTENT_TABLE_FILE = "remove_nonexistent_table.json"
 REMOVE_TABLE_TYPE_FILE = "remove_table_type.json"
@@ -452,7 +447,7 @@ def dynamic_acl_remove_third_drop_rule(duthost):
 def dynamic_acl_replace_nonexistent_rule(duthost):
     """Verify that replacing a non-existent rule fails"""
 
-    with open(os.path.join(TEMPLATES_DIR, REPLACE_NONEXSITENT_RULE_FILE)) as file:
+    with open(os.path.join(TEMPLATES_DIR, REPLACE_NONEXISTENT_RULE_FILE)) as file:
         json_patch = json.load(file)
 
     tmpfile = generate_tmpfile(duthost)
@@ -692,7 +687,7 @@ def test_gcu_acl_forward_rule_priority_respected(rand_selected_dut, ptfadapter, 
     dynamic_acl_verify_packets(setup, ptfadapter, packets=generate_packets(setup), packets_dropped=False)
     dynamic_acl_verify_packets(setup, ptfadapter,
                                packets=generate_packets(setup, DST_IP_BLOCKED, DST_IPV6_BLOCKED),
-                               packets_dropped = True)
+                               packets_dropped=True)
 
 
 def test_gcu_acl_forward_rule_replacement(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):

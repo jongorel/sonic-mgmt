@@ -27,7 +27,21 @@ TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 TMP_DIR = '/tmp'
 
 CREATE_CUSTOM_TABLE_TYPE_FILE = "create_custom_table_type.json"
-CREATE_CUSTOM_TABLE_TEMPLATE = "create_custom_table.json"
+CREATE_CUSTOM_TABLE_TEMPLATE = "create_custom_table.j2"
+CREATE_FORWARD_RULES_TEMPLATE = "create_forward_rules.j2"
+CREATE_INITIAL_DROP_RULE_TEMPLATE = "create_initial_drop_rule.j2"
+CREATE_SECONDARY_DROP_RULE_TEMPLATE = "create_secondary_drop_rule.j2"
+REPLACE_RULES_TEMPLATE = "replace_rules.j2"
+REPLACE_NONEXSITENT_RULE_FILE = "replace_nonexistent_rule.json"
+REMOVE_ONLY_DROP_RULE_FILE = "remove_only_drop_rule.json"
+REMOVE_SECONDARY_DROP_RULE_FILE = "remove_secondary_drop_rule.json"
+REMOVE_FORWARD_RULES_FILE = "remove_forward_rules.json"
+CREATE_FORWARD_SCALE_RULES_TEMPLATE = "create_forward_scale.j2"
+CREATE_DROP_SCALE_RULES_TEMPLATE = "create_drop_scale.j2"
+REMOVE_TABLE_FILE = "remove_table.json"
+REMOVE_NONEXISTENT_TABLE_FILE = "remove_table.json"
+REMOVE_TABLE_TYPE_FILE = "remove_table_type.json"
+
 
 IP_SOURCE = "192.168.0.3"
 IPV6_SOURCE = "fc02:1000::3"
@@ -147,12 +161,13 @@ def build_exp_pkt(input_pkt):
     """
     Generate the expected packet for given packet
     """
-    exp_pkt = Mask(input_pkt)
+    pkt_copy = input_pkt.copy()
+    pkt_copy.ttl = pkt_copy.ttl -1
+    exp_pkt = Mask(pkt_copy)
     exp_pkt.set_do_not_care_scapy(scapy.Ether, "dst")
     exp_pkt.set_do_not_care_scapy(scapy.Ether, "src")
     if input_pkt.haslayer('IP'):
         exp_pkt.set_do_not_care_scapy(scapy.IP, "chksum")
-        exp_pkt.set_do_not_care_scapy(scapy.IP, "ttl")
     else:
         exp_pkt.set_do_not_care_scapy(scapy.IPv6, "hlim")
 
@@ -217,8 +232,6 @@ def expect_acl_rule_removed(duthost, rulename):
 
     pytest_assert(removed, "'{}' showed a rule, this following rule should have been removed".format(cmds))
 
-#TODO - add json patch files to template file or the like.  How to do this?  Answer - use duthost.templtae method with setting environment variables.
-
 @pytest.fixture(scope="module")
 def dynamic_acl_create_table_type(rand_selected_dut):
     """Create a new ACL table type that can be used"""
@@ -251,16 +264,9 @@ def dynamic_acl_create_table(rand_selected_dut, dynamic_acl_create_table_type, s
     expected_bindings = setup["bind_ports"]
     expected_first_line = ["DYNAMIC_ACL_TABLE", "DYNAMIC_ACL_TABLE_TYPE", setup["bind_ports"][0], "DYNAMIC_ACL_TABLE", "ingress", "Active"]
 
-    #tmpfile = generate_tmpfile(rand_selected_dut)
-    #logger.info("tmpfile {}".format(tmpfile))
-
-    #try:
-        #output = apply_patch(rand_selected_dut, json_data=json_patch, dest_file=tmpfile)
     expect_op_success(rand_selected_dut, output)
 
     expect_acl_table_match_multiple_bindings(rand_selected_dut, "DYNAMIC_ACL_TABLE", expected_first_line, expected_bindings)
-    #finally:
-        #delete_tmpfile(rand_selected_dut, tmpfile)
 
     yield
 
@@ -268,27 +274,14 @@ def dynamic_acl_create_table(rand_selected_dut, dynamic_acl_create_table_type, s
 
 def dynamic_acl_create_duplicate_table(duthost, setup):
     """Create a duplicate ACL table type that should succeed"""
-    json_patch = [
-        {
-            "op": "add",
-            "path": "/ACL_TABLE/DYNAMIC_ACL_TABLE",
-            "value": {
-                "policy_desc": "DYNAMIC_ACL_TABLE",
-                "type": "DYNAMIC_ACL_TABLE_TYPE",
-                "stage": "INGRESS",
-                "ports": setup["bind_ports"]
-            }
+
+    extra_vars = {
+        'bind_ports': setup['bind_ports']
         }
-    ]
 
-    tmpfile = generate_tmpfile(duthost)
-    logger.info("tmpfile {}".format(tmpfile))
+    output = format_and_apply_template(duthost, CREATE_CUSTOM_TABLE_TEMPLATE, extra_vars)
 
-    try:
-        output = apply_patch(duthost, json_data=json_patch, dest_file=tmpfile)
-        expect_op_success(duthost, output)
-    finally:
-        delete_tmpfile(duthost, tmpfile)
+    expect_op_success(duthost, output)
 
 def dynamic_acl_create_forward_rules(duthost):
     """Create forward ACL rules"""
@@ -296,98 +289,53 @@ def dynamic_acl_create_forward_rules(duthost):
     IPV4_SUBNET = DST_IP_FORWARDED_ORIGINAL + "/32"
     IPV6_SUBNET = DST_IPV6_FORWARDED_ORIGINAL + "/128"
 
-    json_patch = [
-        {
-            "op": "add",
-            "path": "/ACL_RULE",
-            "value": {
-                "DYNAMIC_ACL_TABLE|RULE_1": {
-                    "DST_IP": IPV4_SUBNET,
-                    "PRIORITY": "9999",
-                    "PACKET_ACTION": "FORWARD"
-                },
-                "DYNAMIC_ACL_TABLE|RULE_2": {
-                    "DST_IPV6": IPV6_SUBNET,
-                    "PRIORITY": "9998",
-                    "PACKET_ACTION": "FORWARD"
-                }
-            }
+    extra_vars = {
+        'ipv4_subnet': IPV4_SUBNET,
+        'ipv6_subnet': IPV6_SUBNET
         }
-    ]
+
+    output = format_and_apply_template(duthost, CREATE_FORWARD_RULES_TEMPLATE, extra_vars)
+
 
     expected_rule_1_content = ["DYNAMIC_ACL_TABLE", "RULE_1", "9999", "FORWARD", "DST_IP: " + IPV4_SUBNET, "Active"]
     expected_rule_2_content = ["DYNAMIC_ACL_TABLE", "RULE_2", "9998", "FORWARD", "DST_IPV6: " + IPV6_SUBNET, "Active"]
 
-    tmpfile = generate_tmpfile(duthost)
-    logger.info("tmpfile {}".format(tmpfile))
+    expect_op_success(duthost, output)
 
-    try:
-        output = apply_patch(duthost, json_data=json_patch, dest_file=tmpfile)
-        expect_op_success(duthost, output)
-
-        expect_acl_rule_match(duthost, "RULE_1", expected_rule_1_content)
-        expect_acl_rule_match(duthost, "RULE_2", expected_rule_2_content)
-    finally:
-        delete_tmpfile(duthost, tmpfile)
+    expect_acl_rule_match(duthost, "RULE_1", expected_rule_1_content)
+    expect_acl_rule_match(duthost, "RULE_2", expected_rule_2_content)
 
 
-def dynamic_acl_create_drop_rule(duthost, setup):
+
+def dynamic_acl_create_secondary_drop_rule(duthost, setup):
     """Create a drop rule in the format required when an ACL table has rules in it already"""
 
-    json_patch = [
-        {
-            "op": "add",
-            "path": "/ACL_RULE/DYNAMIC_ACL_TABLE|RULE_3",
-            "value": {
-                "PRIORITY": "9997",
-                "PACKET_ACTION": "DROP",
-                "IN_PORTS": setup["blocked_src_port_name"]
-            }
-        }
-    ]
+    extra_vars = {
+        'blocked_port': setup["blocked_src_port_name"]
+    }
+
+    output = format_and_apply_template(duthost, CREATE_SECONDARY_DROP_RULE_TEMPLATE, extra_vars)
 
     expected_rule_content = ["DYNAMIC_ACL_TABLE", "RULE_3", "9997" , "DROP", "IN_PORTS: " + setup["blocked_src_port_name"], "Active"]
 
-    tmpfile = generate_tmpfile(duthost)
-    logger.info("tmpfile {}".format(tmpfile))
+    expect_op_success(duthost, output)
 
-    try:
-        output = apply_patch(duthost, json_data=json_patch, dest_file=tmpfile)
-        expect_op_success(duthost, output)
-
-        expect_acl_rule_match(duthost, "RULE_3", expected_rule_content)
-    finally:
-        delete_tmpfile(duthost, tmpfile)
+    expect_acl_rule_match(duthost, "RULE_3", expected_rule_content)
 
 def dynamic_acl_create_drop_rule_initial(duthost, setup):
     """Create a drop rule in the format required when an ACL table does not have any rules in it yet"""
 
-    json_patch = [
-        {
-            "op": "add",
-            "path": "/ACL_RULE",
-            "value": {
-                "DYNAMIC_ACL_TABLE|RULE_3": {
-                    "PRIORITY": "9997",
-                    "PACKET_ACTION": "DROP",
-                    "IN_PORTS": setup["blocked_src_port_name"],
-                }
-            }
-        }
-    ]
+    extra_vars = {
+        'blocked_port': setup["blocked_src_port_name"]
+    }
+
+    output = format_and_apply_template(duthost, CREATE_SECONDARY_DROP_RULE_TEMPLATE, extra_vars)
 
     expected_rule_content = ["DYNAMIC_ACL_TABLE", "RULE_3", "9997" , "DROP", "IN_PORTS: " + setup["blocked_src_port_name"], "Active"]
 
-    tmpfile = generate_tmpfile(duthost)
-    logger.info("tmpfile {}".format(tmpfile))
+    expect_op_success(duthost, output)
 
-    try:
-        output = apply_patch(duthost, json_data=json_patch, dest_file=tmpfile)
-        expect_op_success(duthost, output)
-
-        expect_acl_rule_match(duthost, "RULE_3", expected_rule_content)
-    finally:
-        delete_tmpfile(duthost, tmpfile)
+    expect_acl_rule_match(duthost, "RULE_3", expected_rule_content)
 
 def dynamic_acl_verify_packets(setup, ptfadapter, packets, packets_dropped, src_port = None):
     """Verify that the given packets are either dropped/forwarded correctly
@@ -415,13 +363,9 @@ def dynamic_acl_verify_packets(setup, ptfadapter, packets, packets_dropped, src_
 
 def dynamic_acl_remove_drop_rule(duthost):
     """Remove the drop rule that we just created"""
-    json_patch = [
-        {
-            "op": "remove",
-            "path": "/ACL_RULE/DYNAMIC_ACL_TABLE|RULE_3",
-            "value":{}
-        }
-    ]
+
+    with open(os.path.join(TEMPLATES_DIR, REMOVE_SECONDARY_DROP_RULE_FILE)) as file:
+        json_patch = json.load(file)
 
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {}".format(tmpfile))
@@ -436,13 +380,9 @@ def dynamic_acl_remove_drop_rule(duthost):
 
 def dynamic_acl_remove_drop_rule_initial(duthost):
     """Remove the drop rule that we just created.  Since this drop rule is the only ACL_RULE in the entire table, we must remove the entire table"""
-    json_patch = [
-        {
-            "op": "remove",
-            "path": "/ACL_RULE",
-            "value":{}
-        }
-    ]
+
+    with open(os.path.join(TEMPLATES_DIR, REMOVE_ONLY_DROP_RULE_FILE)) as file:
+        json_patch = json.load(file)
 
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {}".format(tmpfile))
@@ -455,19 +395,11 @@ def dynamic_acl_remove_drop_rule_initial(duthost):
     finally:
         delete_tmpfile(duthost, tmpfile)
 
-def dynamic_acl_replace_nonexistant_rule(duthost):
+def dynamic_acl_replace_nonexistent_rule(duthost):
     """Verify that replacing a non-existent rule fails"""
-    json_patch = [
-        {
-            "op": "replace",
-            "path": "/ACL_RULE/DYNAMIC_ACL_TABLE|RULE_10",
-            "value": {
-                "DST_IP": "103.23.2.2/32",
-                "PRIORITY": "9999",
-                "PACKET_ACTION": "FORWARD"
-            }
-        }
-    ]
+
+    with open(os.path.join(TEMPLATES_DIR, REPLACE_NONEXSITENT_RULE_FILE)) as file:
+        json_patch = json.load(file)
 
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {}".format(tmpfile))
@@ -485,41 +417,19 @@ def dynamic_acl_replace_rules(duthost):
     REPLACEMENT_IPV4_SUBNET = DST_IP_FORWARDED_REPLACEMENT + "/32"
     REPLACEMENT_IPV6_SUBNET = DST_IPV6_FORWARDED_REPLACEMENT + "/128"
 
-    json_patch = [
-        {
-            "op": "replace",
-            "path": "/ACL_RULE/DYNAMIC_ACL_TABLE|RULE_1",
-            "value": {
-                "DST_IP": REPLACEMENT_IPV4_SUBNET,
-                "PRIORITY": "9999",
-                "PACKET_ACTION": "FORWARD"
-            }
-        },
-        {
-        "op": "replace",
-        "path": "/ACL_RULE/DYNAMIC_ACL_TABLE|RULE_2",
-            "value": {
-                "DST_IPV6": REPLACEMENT_IPV6_SUBNET,
-                "PRIORITY": "9998",
-                "PACKET_ACTION": "FORWARD"
-            }
+    extra_vars = {
+        'ipv4_subnet': REPLACEMENT_IPV4_SUBNET,
+        'ipv6_subnet': REPLACEMENT_IPV6_SUBNET
         }
-    ]
 
     expected_rule_1_content = ["DYNAMIC_ACL_TABLE", "RULE_1", "9999", "FORWARD", "DST_IP:" + REPLACEMENT_IPV4_SUBNET, "Active"]
     expected_rule_2_content = ["DYNAMIC_ACL_TABLE", "RULE_2", "9998", "FORWARD", "DST_IPV6:" + REPLACEMENT_IPV6_SUBNET, "Active"]
 
-    tmpfile = generate_tmpfile(duthost)
-    logger.info("tmpfile {}".format(tmpfile))
+    output = format_and_apply_template(duthost, REPLACE_RULES_TEMPLATE, extra_vars)
 
-    try:
-        output = apply_patch(duthost, json_data=json_patch, dest_file=tmpfile)
-        expect_op_success(duthost, output)
+    expect_acl_rule_match(duthost, "RULE_1", expected_rule_1_content)
+    expect_acl_rule_match(duthost, "RULE_2", expected_rule_2_content)
 
-        expect_acl_rule_match(duthost, "RULE_1", expected_rule_1_content)
-        expect_acl_rule_match(duthost, "RULE_2", expected_rule_2_content)
-    finally:
-        delete_tmpfile(duthost, tmpfile)
 
 def dynamic_acl_apply_forward_scale_rules(duthost, setup):
     """Apply a large amount of forward rules to the duthost"""
@@ -611,18 +521,9 @@ def dynamic_acl_apply_drop_scale_rules(duthost, setup):
 
 def dynamic_acl_remove_forward_rules(duthost):
     """Remove our two forward rules from the acl table"""
-    json_patch = [
-        {
-            "op": "remove",
-            "path": "/ACL_RULE/DYNAMIC_ACL_TABLE|RULE_1",
-            "value":{}
-        },
-        {
-            "op": "remove",
-            "path": "/ACL_RULE/DYNAMIC_ACL_TABLE|RULE_2",
-            "value": { }
-        }
-    ]
+
+    with open(os.path.join(TEMPLATES_DIR, REMOVE_FORWARD_RULES_FILE)) as file:
+        json_patch = json.load(file)
 
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {}".format(tmpfile))
@@ -638,13 +539,8 @@ def dynamic_acl_remove_forward_rules(duthost):
 
 def dynamic_acl_remove_table(duthost):
     """Remove an ACL Table Type from the duthost"""
-    json_patch = [
-        {
-            "op": "remove",
-            "path": "/ACL_TABLE/DYNAMIC_ACL_TABLE",
-            "value": { }
-        }
-    ]
+    with open(os.path.join(TEMPLATES_DIR, REMOVE_TABLE_FILE)) as file:
+        json_patch = json.load(file)
 
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {}".format(tmpfile))
@@ -655,15 +551,10 @@ def dynamic_acl_remove_table(duthost):
     finally:
         delete_tmpfile(duthost, tmpfile)
 
-def dynamic_acl_remove_nonexistant_table(duthost):
+def dynamic_acl_remove_nonexistent_table(duthost):
     """Remove a nonexistent ACL Table from the duthost, verify it fails"""
-    json_patch = [
-        {
-            "op": "remove",
-            "path": "/ACL_TABLE/DYNAMIC_ACL_TABLE_BAD",
-            "value": { }
-        }
-    ]
+    with open(os.path.join(TEMPLATES_DIR, REMOVE_NONEXISTENT_TABLE_FILE)) as file:
+        json_patch = json.load(file)
 
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {}".format(tmpfile))
@@ -677,13 +568,8 @@ def dynamic_acl_remove_nonexistant_table(duthost):
 def dynamic_acl_remove_table_type(duthost):
     """Remove an ACL Table definition from the duthost
     As we only have one ACL Table definition on """
-    json_patch = [
-        {
-            "op": "remove",
-            "path": "/ACL_TABLE_TYPE",
-            "value": { }
-        }
-    ]
+    with open(os.path.join(TEMPLATES_DIR, REMOVE_TABLE_TYPE_FILE)) as file:
+        json_patch = json.load(file)
 
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {}".format(tmpfile))
@@ -695,10 +581,13 @@ def dynamic_acl_remove_table_type(duthost):
         delete_tmpfile(duthost, tmpfile)
 
 
-#TODO - add comments for each test case.  Enhance test cases according to bings suggestions
+#TODO - Enhance test cases according to bings suggestions
 
 
 def test_gcu_acl_drop_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
+    """Test that we can create a drop rule via GCU, and that once this drop rule is in place packets that match the drop rule are dropped and packets that do not match the drop
+    rule are forwarded"""
+
     dynamic_acl_create_drop_rule_initial(rand_selected_dut, setup)
     dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_packets(setup, DST_IP_BLOCKED, DST_IPV6_BLOCKED), packets_dropped = True)
     dynamic_acl_verify_packets(setup,
@@ -709,19 +598,27 @@ def test_gcu_acl_drop_rule_creation(rand_selected_dut, ptfadapter, setup, dynami
 
 
 def test_gcu_acl_drop_rule_removal(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
+    """Test that once a drop rule is removed, packets that were previously being dropped are now forwarded"""
+
     dynamic_acl_create_drop_rule_initial(rand_selected_dut, setup)
     dynamic_acl_remove_drop_rule_initial(rand_selected_dut)
     dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_packets(setup, DST_IP_BLOCKED, DST_IPV6_BLOCKED), packets_dropped = False)
 
 def test_gcu_acl_forward_rule_priority_respected(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
+    """Test that forward rules and drop rules can be created at the same time, with the forward rules having higher priority than drop.
+    Then, perform a traffic test to confirm that packets that match both the forward and drop rules are correctly forwarded, as the forwarding rules have higher priority"""
+
     dynamic_acl_create_forward_rules(rand_selected_dut)
-    dynamic_acl_create_drop_rule(rand_selected_dut, setup)
+    dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
     dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_packets(setup), packets_dropped = False)
     dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_packets(setup, DST_IP_BLOCKED, DST_IPV6_BLOCKED), packets_dropped = True)
 
 def test_gcu_acl_forward_rule_replacement(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
+    """Test that forward rules can be created, and then afterwards can have their match pattern updated to a new value.  Confirm that packets sent that match this new value
+    are correctly forwarded, and that packets that are sent that match the old, replaced value are correctly dropped."""
+
     dynamic_acl_create_forward_rules(rand_selected_dut)
-    dynamic_acl_create_drop_rule(rand_selected_dut, setup)
+    dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
     dynamic_acl_replace_rules(rand_selected_dut)
     dynamic_acl_verify_packets(setup,
                                ptfadapter,
@@ -731,7 +628,7 @@ def test_gcu_acl_forward_rule_replacement(rand_selected_dut, ptfadapter, setup, 
 
 def test_gcu_acl_forward_rule_removal(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
     dynamic_acl_create_forward_rules(rand_selected_dut)
-    dynamic_acl_create_drop_rule(rand_selected_dut, setup)
+    dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
     dynamic_acl_remove_forward_rules(rand_selected_dut)
     dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_packets(setup), packets_dropped = True)
 
@@ -755,7 +652,7 @@ def test_gcu_acl_scale_rules(rand_selected_dut, ptfadapter, setup, dynamic_acl_c
 
 
 def test_gcu_acl_nonexistent_rule_replacement(rand_selected_dut):
-    dynamic_acl_replace_nonexistant_rule(rand_selected_dut)
+    dynamic_acl_replace_nonexistent_rule(rand_selected_dut)
 
 def test_gcu_acl_nonexistent_table_removal(rand_selected_dut):
-    dynamic_acl_remove_nonexistant_table(rand_selected_dut)
+    dynamic_acl_remove_nonexistent_table(rand_selected_dut)

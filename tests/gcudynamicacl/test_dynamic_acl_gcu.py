@@ -174,10 +174,10 @@ def build_exp_pkt(input_pkt):
     return exp_pkt
 
 def format_and_apply_template(duthost, template_name, extra_vars):
-    dest_path = os.path.join(TMP_DIR, CREATE_CUSTOM_TABLE_TEMPLATE)
+    dest_path = os.path.join(TMP_DIR, template_name)
     duthost.host.options['variable_manager'].extra_vars.update(extra_vars)
     duthost.file(path=dest_path, state='absent')
-    duthost.template(src=os.path.join(TEMPLATES_DIR, CREATE_CUSTOM_TABLE_TEMPLATE), dest=dest_path)
+    duthost.template(src=os.path.join(TEMPLATES_DIR, template_name), dest=dest_path)
 
     duthost.shell("sed -i \"s/'/\\\"/g\" " + dest_path) #duthost.template uses single quotes, which breaks apply-patch.  this replaces them with double quotes
 
@@ -329,7 +329,7 @@ def dynamic_acl_create_drop_rule_initial(duthost, setup):
         'blocked_port': setup["blocked_src_port_name"]
     }
 
-    output = format_and_apply_template(duthost, CREATE_SECONDARY_DROP_RULE_TEMPLATE, extra_vars)
+    output = format_and_apply_template(duthost, CREATE_INITIAL_DROP_RULE_TEMPLATE, extra_vars)
 
     expected_rule_content = ["DYNAMIC_ACL_TABLE", "RULE_3", "9997" , "DROP", "IN_PORTS: " + setup["blocked_src_port_name"], "Active"]
 
@@ -627,12 +627,17 @@ def test_gcu_acl_forward_rule_replacement(rand_selected_dut, ptfadapter, setup, 
     dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_packets(setup), packets_dropped = True)
 
 def test_gcu_acl_forward_rule_removal(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
+    """Test that if a forward rule is created, and then removed, that packets associated with that rule are properly no longer forwarded"""
     dynamic_acl_create_forward_rules(rand_selected_dut)
     dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
     dynamic_acl_remove_forward_rules(rand_selected_dut)
     dynamic_acl_verify_packets(setup, ptfadapter, packets = generate_packets(setup), packets_dropped = True)
 
 def test_gcu_acl_scale_rules(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
+    """Perform a scale test, creating 150 forward rules with top priority, and then creating a drop rule for every single VLAN port on our device
+    Select any one of our blocked ports, as well as the ips for two of our forward rules, and confirm that packet forwarding and dropping works as expeted even
+    with this large amount of rules"""
+
     dynamic_acl_apply_forward_scale_rules(rand_selected_dut, setup)
     dynamic_acl_apply_drop_scale_rules(rand_selected_dut, setup)
 
@@ -652,7 +657,9 @@ def test_gcu_acl_scale_rules(rand_selected_dut, ptfadapter, setup, dynamic_acl_c
 
 
 def test_gcu_acl_nonexistent_rule_replacement(rand_selected_dut):
+    """Confirm that replacing a nonexistent rule results in operation failure"""
     dynamic_acl_replace_nonexistent_rule(rand_selected_dut)
 
 def test_gcu_acl_nonexistent_table_removal(rand_selected_dut):
+    """Confirm that removing a nonexistent table results in operation failure"""
     dynamic_acl_remove_nonexistent_table(rand_selected_dut)

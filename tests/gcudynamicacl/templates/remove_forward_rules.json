@@ -1,0 +1,12 @@
+[
+    {
+        "op": "remove",
+        "path": "/ACL_RULE/DYNAMIC_ACL_TABLE|RULE_1",
+        "value":{}
+    },
+    {
+        "op": "remove",
+        "path": "/ACL_RULE/DYNAMIC_ACL_TABLE|RULE_2",
+        "value": { }
+    }
+]

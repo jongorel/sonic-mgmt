@@ -154,8 +154,7 @@ def generate_packets(setup, dst_ip = DST_IP_FORWARDED_ORIGINAL, dst_ipv6 = DST_I
 
     packets["IPV6"] = testutils.simple_tcpv6_packet(eth_dst=setup["router_mac"],
                                 ipv6_src=IPV6_SOURCE,
-                                ipv6_dst=dst_ipv6,
-                                ip_ttl = 64)
+                                ipv6_dst=dst_ipv6)
 
     return packets
 
@@ -164,7 +163,8 @@ def build_exp_pkt(input_pkt):
     Generate the expected packet for given packet
     """
     pkt_copy = input_pkt.copy()
-    pkt_copy['IP'].ttl = pkt_copy['IP'].ttl -1
+    if pkt_copy.haslayer('IP'):
+        pkt_copy['IP'].ttl-=1
     exp_pkt = Mask(pkt_copy)
     exp_pkt.set_do_not_care_scapy(scapy.Ether, "dst")
     exp_pkt.set_do_not_care_scapy(scapy.Ether, "src")
@@ -424,8 +424,8 @@ def dynamic_acl_replace_rules(duthost):
         'ipv6_subnet': REPLACEMENT_IPV6_SUBNET
         }
 
-    expected_rule_1_content = ["DYNAMIC_ACL_TABLE", "RULE_1", "9999", "FORWARD", "DST_IP:" + REPLACEMENT_IPV4_SUBNET, "Active"]
-    expected_rule_2_content = ["DYNAMIC_ACL_TABLE", "RULE_2", "9998", "FORWARD", "DST_IPV6:" + REPLACEMENT_IPV6_SUBNET, "Active"]
+    expected_rule_1_content = ["DYNAMIC_ACL_TABLE", "RULE_1", "9999", "FORWARD", "DST_IP: " + REPLACEMENT_IPV4_SUBNET, "Active"]
+    expected_rule_2_content = ["DYNAMIC_ACL_TABLE", "RULE_2", "9998", "FORWARD", "DST_IPV6: " + REPLACEMENT_IPV6_SUBNET, "Active"]
 
     output = format_and_apply_template(duthost, REPLACE_RULES_TEMPLATE, extra_vars)
 

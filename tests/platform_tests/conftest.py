@@ -35,13 +35,21 @@ LOGS_ON_TMPFS_PLATFORMS = [
 
 
 def _parse_timestamp(timestamp):
+    year = datetime.today().year
     try:
         time = datetime.strptime(timestamp, FMT)
     except ValueError:
         try:
-            time = datetime.strptime(timestamp, FMT_SHORT)
+            time = datetime.strptime(str(year) + " " + timestamp, "%Y " + FMT)
         except ValueError:
-            time = datetime.strptime(timestamp, FMT_ALT)
+            try:
+                time = datetime.strptime(timestamp, FMT_SHORT)
+            except ValueError:
+                try:
+                    time = datetime.strptime(str(year) + " " + timestamp, "Y" + FMT_SHORT)
+                except ValueError:
+                    time = datetime.strptime(timestamp, FMT_ALT)
+
     return time
 
 

@@ -602,7 +602,7 @@ def dynamic_acl_remove_nonexistent_table(duthost):
 def dynamic_acl_remove_table_type(duthost):
     """Remove an ACL Table definition from the duthost"""
 
-    output = load_and_apply_json_patch(REMOVE_TABLE_TYPE_FILE)
+    output = load_and_apply_json_patch(duthost, REMOVE_TABLE_TYPE_FILE)
 
     expect_op_success(duthost, output)
 

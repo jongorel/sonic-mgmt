@@ -190,6 +190,7 @@ def format_and_apply_template(duthost, template_name, extra_vars):
 
     return output
 
+
 def load_and_apply_json_patch(duthost, file_name):
     with open(os.path.join(TEMPLATES_DIR, file_name)) as file:
         json_patch = json.load(file)
@@ -200,7 +201,7 @@ def load_and_apply_json_patch(duthost, file_name):
     try:
         output = apply_patch(duthost, json_data=json_patch, dest_file=tmpfile)
     finally:
-        delete_tmpfile(duthost)
+        delete_tmpfile(duthost, tmpfile)
 
     return output
 
@@ -575,7 +576,7 @@ def dynamic_acl_remove_forward_rule(duthost, ip_type):
         file = REMOVE_IPV6_FORWARD_RULE_FILE
         rule_name = "RULE_2"
 
-    output = load_and_apply_json_patch(file)
+    output = load_and_apply_json_patch(duthost, file)
 
     expect_op_success(duthost, output)
 
@@ -585,7 +586,7 @@ def dynamic_acl_remove_forward_rule(duthost, ip_type):
 def dynamic_acl_remove_table(duthost):
     """Remove an ACL Table Type from the duthost"""
 
-    output = load_and_apply_json_patch(REMOVE_TABLE_FILE)
+    output = load_and_apply_json_patch(duthost, REMOVE_TABLE_FILE)
 
     expect_op_success(duthost, output)
 
@@ -663,6 +664,7 @@ def test_gcu_acl_forward_rule_replacement(rand_selected_dut, ptfadapter, setup, 
                                packets_dropped=False)
     dynamic_acl_verify_packets(setup, ptfadapter, packets=generate_packets(setup), packets_dropped=True)
 
+
 @pytest.mark.parametrize("ip_type", ["IPV4", "IPV6"])
 def test_gcu_acl_forward_rule_removal(rand_selected_dut, ptfadapter, setup, ip_type, dynamic_acl_create_table):
     """Test that if a forward rule is created, and then removed, that packets associated with that rule are properly
@@ -681,6 +683,7 @@ def test_gcu_acl_forward_rule_removal(rand_selected_dut, ptfadapter, setup, ip_t
     forward_packets.pop(ip_type)
     dynamic_acl_verify_packets(setup, ptfadapter, drop_packets, packets_dropped=True)
     dynamic_acl_verify_packets(setup, ptfadapter, forward_packets, packets_dropped=False)
+
 
 def test_gcu_acl_scale_rules(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
     """Perform a scale test, creating 150 forward rules with top priority,

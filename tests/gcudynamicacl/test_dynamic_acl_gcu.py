@@ -654,13 +654,12 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic
     dynamic_acl_create_arp_forward_rule(rand_selected_dut)
     dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
 
-    pkt = testutils.simple_arp_packet(eth_dst=setup["router_mac"], eth_type=0x0806)
+    pkt = testutils.simple_arp_packet(eth_dst=setup["router_mac"])
 
     src_port = setup["blocked_src_port_indice"]
     masked_exp_pkt = Mask(pkt)
     masked_exp_pkt.set_do_not_care_scapy(scapy.Ether, "dst")
     masked_exp_pkt.set_do_not_care_scapy(scapy.Ether, "src")
-    masked_exp_pkt.set_do_not_care_scapy(scapy.ARP, "op")
     # Send and verify packet
     ptfadapter.dataplane.flush()
     testutils.send(ptfadapter, pkt=pkt, port_id=src_port)

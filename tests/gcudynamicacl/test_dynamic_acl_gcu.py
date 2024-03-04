@@ -654,27 +654,25 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic
     dynamic_acl_create_arp_forward_rule(rand_selected_dut)
     dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
 
-    pkt = testutils.simple_arp_packet(eth_dst=setup["router_mac"])
-
     pkt = testutils.simple_arp_packet(pktlen=60,
-                                eth_src=ptfadapter.dataplane.get_mac(0, 0),
+                                eth_dst=setup["router_mac"],
+                                eth_src='00:06:07:08:09:00',
                                 vlan_vid=0,
                                 vlan_pcp=0,
                                 arp_op=1,
                                 ip_snd='10.10.1.3',
                                 ip_tgt='10.10.1.2',
-                                hw_snd=ptfadapter.dataplane.get_mac(0, 0),
+                                hw_snd='00:06:07:08:09:00',
+                                hw_tgt=setup["router_mac"],
                                 )
-    exp_pkt = testutils.simple_arp_packet(eth_dst=ptfadapter.dataplane.get_mac(0, 0),
+    exp_pkt = testutils.simple_arp_packet(eth_dst='00:06:07:08:09:00',
+                                eth_src=setup["router_mac"],
                                 arp_op=2,
                                 ip_snd='10.10.1.2',
                                 ip_tgt='10.10.1.3',
-                                hw_tgt=ptfadapter.dataplane.get_mac(0, 0),
+                                hw_tgt='00:06:07:08:09:00',
+                                hw_snd=setup["router_mac"],
                                 )
-
-    exp_pkt.set_do_not_care_scapy(scapy.Ether, 'src')
-    exp_pkt.set_do_not_care_scapy(scapy.ARP,   'hwtype')
-    exp_pkt.set_do_not_care_scapy(scapy.ARP,   'hwsrc')
 
     src_port = setup["blocked_src_port_indice"]
     ptfadapter.dataplane.flush()

@@ -411,7 +411,7 @@ def dynamic_acl_create_arp_forward_rule(duthost):
 def dynamic_acl_create_dhcp_forward_rule(duthost):
     """Create a DHCP forward rule with the highest priority"""
 
-    output = load_and_apply_json_patch(duthost, CREATE_ARP_FORWARD_RULE_FILE)
+    output = load_and_apply_json_patch(duthost, CREATE_DHCP_FORWARD_RULE_FILE)
 
     expect_op_success(duthost, output)
 

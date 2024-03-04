@@ -4,7 +4,7 @@
         "path": "/ACL_RULE",
         "value": {
             "DYNAMIC_ACL_TABLE|DHCP_RULE": {
-                "IP_PROTOCOL": "UDP",
+                "IP_TYPE": "UDP",
                 "L4_DST_PORT": "67",
                 "PRIORITY": "9999",
                 "PACKET_ACTION": "FORWARD"

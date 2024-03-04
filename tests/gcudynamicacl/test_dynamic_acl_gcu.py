@@ -643,8 +643,7 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic
     """Test that we can create a blanket ARP packet forwarding rule with GCU, and that ARP packets
     are correctly forwarded while all others are dropped"""
 
-    pkt = testutils.simple_eth_packet(eth_dst=setup["router_mac"],
-                                         eth_type=0x0806)
+    pkt = testutils.simple_arp_packet(eth_dst=setup["router_mac"])
 
     dynamic_acl_create_arp_forward_rule(rand_selected_dut)
     dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)

@@ -406,7 +406,7 @@ def dynamic_acl_create_arp_forward_rule(duthost):
 
     expected_rule_content =  ["DYNAMIC_ACL_TABLE", "ARP_RULE", "9998", "FORWARD", "ETHER_TYPE: 0x0806", "Active"]
 
-    expect_acl_rule_match(expected_rule_content, "ARP_RULE")
+    expect_acl_rule_match(duthost, "ARP_RULE", expected_rule_content)
 
 def dynamic_acl_create_dhcp_forward_rule(duthost):
     """Create a DHCP forward rule with the highest priority"""
@@ -422,7 +422,7 @@ def dynamic_acl_create_dhcp_forward_rule(duthost):
                               "L4_DST_PORT: 67",
                               "Active"]
 
-    expect_acl_rule_match(expected_rule_content, "DHCP_RULE")
+    expect_acl_rule_match(duthost, "DHCP_RULE", expected_rule_content)
 
 
 def dynamic_acl_verify_packets(setup, ptfadapter, packets, packets_dropped, src_port=None):

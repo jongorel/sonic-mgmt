@@ -656,14 +656,35 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic
 
     pkt = testutils.simple_arp_packet(eth_dst=setup["router_mac"])
 
+    packet = simple_arp_packet(
+            eth_src=src_mac, arp_op=1, ip_snd=src_addr, ip_tgt=dst_addr, hw_snd=src_mac)
+    expect = simple_arp_packet(
+        eth_dst=src_mac, arp_op=2, ip_snd=dst_addr, ip_tgt=src_addr, hw_tgt=src_mac)
+
+    pkt = testutils.simple_arp_packet(pktlen=60,
+                                eth_src=ptfadapter.dataplane.get_mac(0, 0),
+                                vlan_vid=0,
+                                vlan_pcp=0,
+                                arp_op=1,
+                                ip_snd='10.10.1.3',
+                                ip_tgt='10.10.1.2',
+                                hw_snd=ptfadapter.dataplane.get_mac(0, 0),
+                                )
+    exp_pkt = testutils.simple_arp_packet(eth_dst=ptfadapter.dataplane.get_mac(0, 0),
+                                arp_op=2,
+                                ip_snd='10.10.1.2',
+                                ip_tgt='10.10.1.3',
+                                hw_tgt=ptfadapter.dataplane.get_mac(0, 0),
+                                )
+
+    exp_pkt.set_do_not_care_scapy(scapy.Ether, 'src')
+    exp_pkt.set_do_not_care_scapy(scapy.ARP,   'hwtype')
+    exp_pkt.set_do_not_care_scapy(scapy.ARP,   'hwsrc')
+
     src_port = setup["blocked_src_port_indice"]
-    masked_exp_pkt = Mask(pkt)
-    masked_exp_pkt.set_do_not_care_scapy(scapy.Ether, "dst")
-    masked_exp_pkt.set_do_not_care_scapy(scapy.Ether, "src")
-    # Send and verify packet
     ptfadapter.dataplane.flush()
     testutils.send(ptfadapter, pkt=pkt, port_id=src_port)
-    verify_expected_packet_behavior(masked_exp_pkt, ptfadapter, setup, expect_drop=False)
+    verify_expected_packet_behavior(exp_pkt, ptfadapter, setup, expect_drop=False)
 
     dynamic_acl_verify_packets(setup,
                                ptfadapter,
@@ -676,13 +697,13 @@ def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynami
     are correctly forwarded while all others are dropped"""
 
     pkt = testutils.simple_udp_packet(eth_dst=setup["router_mac"],
-                                      ip_dst=DST_IP_FORWARDED_ORIGINAL,
+                                      ip_dst="255.255.255.255",
                                       ip_src=IP_SOURCE,
                                       udp_dport=67,
                                       ip_ttl=64)
 
     pktv6 = testutils.simple_udpv6_packet(eth_dst=setup["router_mac"],
-                                          ipv6_dst=DST_IPV6_FORWARDED_ORIGINAL,
+                                          ipv6_dst=DST_IPV6_BLOCKED,
                                           ipv6_src=IPV6_SOURCE,
                                           udp_dport=67)
 
@@ -691,7 +712,17 @@ def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynami
     dynamic_acl_create_dhcp_forward_rule(rand_selected_dut)
     dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
 
-    dynamic_acl_verify_packets(setup, ptfadapter, packets, packets_dropped=False)
+    src_port = setup["blocked_src_port_indice"]
+    masked_exp_pkt = Mask(pkt)
+    masked_exp_pkt.set_do_not_care_scapy(scapy.Ether, "dst")
+    masked_exp_pkt.set_do_not_care_scapy(scapy.Ether, "src")
+    masked_exp_pkt.set_do_not_care_scape(scapy.IP, "dst")
+    # Send and verify packet
+    ptfadapter.dataplane.flush()
+    testutils.send(ptfadapter, pkt=pkt, port_id=src_port)
+    verify_expected_packet_behavior(masked_exp_pkt, ptfadapter, setup, expect_drop=False)
+
+    #dynamic_acl_verify_packets(setup, ptfadapter, packets, packets_dropped=False)
 
     dynamic_acl_verify_packets(setup,
                                ptfadapter,

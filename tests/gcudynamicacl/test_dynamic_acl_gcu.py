@@ -237,9 +237,17 @@ def expect_acl_rule_match(duthost, rulename, expected_content_list):
     cmds = "show acl rule DYNAMIC_ACL_TABLE {}".format(rulename)
 
     output = duthost.show_and_parse(cmds)
-    pytest_assert(len(output) == 1, "'{}' is not a rule on this device".format(rulename))
+
+    rule_lines = len(output)
+
+    pytest_assert(rule_lines >= 1, "'{}' is not a rule on this device".format(rulename))
 
     pytest_assert(set(output[0].values()) == set(expected_content_list), "ACL Rule details do not match!")
+
+    if rule_lines > 1:
+        for i in range(1, rule_lines):
+            pytest_assert(output[i]["match"] in expected_content_list, "Unexpected match condition found: " + str(output[i]["match"]))
+
 
 
 def expect_acl_rule_removed(duthost, rulename):

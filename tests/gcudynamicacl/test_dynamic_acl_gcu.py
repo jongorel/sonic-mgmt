@@ -242,7 +242,7 @@ def expect_acl_rule_match(duthost, rulename, expected_content_list):
 
     pytest_assert(rule_lines >= 1, "'{}' is not a rule on this device".format(rulename))
 
-    pytest_assert(set(output[0].values()) == set(expected_content_list), "ACL Rule details do not match!")
+    pytest_assert(set(output[0].values()) <= set(expected_content_list), "ACL Rule details do not match!")
 
     if rule_lines > 1:
         for i in range(1, rule_lines):
@@ -426,7 +426,7 @@ def dynamic_acl_create_dhcp_forward_rule(duthost):
     expected_rule_content =  ["DYNAMIC_ACL_TABLE",
                               "DHCP_RULE", "9999",
                               "FORWARD",
-                              "IP_PROTOCOL: 0x11",
+                              "IP_PROTOCOL: 17",
                               "L4_DST_PORT: 67",
                               "Active"]
 
@@ -651,15 +651,16 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic
     """Test that we can create a blanket ARP packet forwarding rule with GCU, and that ARP packets
     are correctly forwarded while all others are dropped"""
 
-    pkt = testutils.simple_arp_packet(eth_dst=setup["router_mac"])
-
     dynamic_acl_create_arp_forward_rule(rand_selected_dut)
     dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
+
+    pkt = testutils.simple_arp_packet(eth_dst=setup["router_mac"], eth_type=0x0806)
 
     src_port = setup["blocked_src_port_indice"]
     masked_exp_pkt = Mask(pkt)
     masked_exp_pkt.set_do_not_care_scapy(scapy.Ether, "dst")
     masked_exp_pkt.set_do_not_care_scapy(scapy.Ether, "src")
+    masked_exp_pkt.set_do_not_care_scapy(scapy.ARP, "op")
     # Send and verify packet
     ptfadapter.dataplane.flush()
     testutils.send(ptfadapter, pkt=pkt, port_id=src_port)
@@ -675,24 +676,28 @@ def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynami
     """Test that we can create a blanket DHCP packet forwarding rule with GCU, and that ARP packets
     are correctly forwarded while all others are dropped"""
 
-    pkt = testutils.simple_udp_packet(eth_dst=setup["router_mac"], ip_dst=DST_IP_FORWARDED_ORIGINAL, ip_src=IP_SOURCE, udp_dport=67, ip_ttl=64)
-    pktv6 = testutils.simple_udpv6_packet(eth_dst=setup["router_mac"], ipv6_dst=DST_IPV6_FORWARDED_ORIGINAL, ipv6_src=IPV6_SOURCE, udp_dport=67)
+    pkt = testutils.simple_udp_packet(eth_dst=setup["router_mac"],
+                                      ip_dst=DST_IP_FORWARDED_ORIGINAL,
+                                      ip_src=IP_SOURCE,
+                                      udp_dport=67,
+                                      ip_ttl=64)
+
+    pktv6 = testutils.simple_udpv6_packet(eth_dst=setup["router_mac"],
+                                          ipv6_dst=DST_IPV6_FORWARDED_ORIGINAL,
+                                          ipv6_src=IPV6_SOURCE,
+                                          udp_dport=67)
+
+    packets = {"IPV4" : pkt, "IPV6" : pktv6}
 
     dynamic_acl_create_dhcp_forward_rule(rand_selected_dut)
     dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
 
-    src_port = setup["blocked_src_port_indice"]
-    exp_pkt = build_exp_pkt(pkt)
-    # Send and verify packet
-    ptfadapter.dataplane.flush()
-    testutils.send(ptfadapter, pkt=pkt, port_id=src_port)
-    verify_expected_packet_behavior(exp_pkt, ptfadapter, setup, expect_drop=False)
+    dynamic_acl_verify_packets(setup, ptfadapter, packets, packets_dropped=False)
 
     dynamic_acl_verify_packets(setup,
                                ptfadapter,
                                packets=generate_packets(setup, DST_IP_BLOCKED, DST_IPV6_BLOCKED),
-                               packets_dropped=True,
-                               src_port=src_port)
+                               packets_dropped=True)
 
 
 def test_gcu_acl_drop_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):

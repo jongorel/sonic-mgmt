@@ -650,11 +650,13 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic
     dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
 
     src_port = setup["blocked_src_port_indice"]
-    exp_pkt = build_exp_pkt(pkt)
+    masked_exp_pkt = Mask(pkt)
+    masked_exp_pkt.set_do_not_care_scapy(scapy.Ether, "dst")
+    masked_exp_pkt.set_do_not_care_scapy(scapy.Ether, "src")
     # Send and verify packet
     ptfadapter.dataplane.flush()
     testutils.send(ptfadapter, pkt=pkt, port_id=src_port)
-    verify_expected_packet_behavior(exp_pkt, ptfadapter, setup, expect_drop=False)
+    verify_expected_packet_behavior(masked_exp_pkt, ptfadapter, setup, expect_drop=False)
 
     dynamic_acl_verify_packets(setup,
                                ptfadapter,

@@ -337,7 +337,7 @@ def dynamic_acl_create_secondary_drop_rule(duthost, setup):
 
     expected_rule_content = ["DYNAMIC_ACL_TABLE",
                              "RULE_3",
-                             "9997",
+                             "9996",
                              "DROP",
                              "IN_PORTS: " + setup["blocked_src_port_name"],
                              "Active"]
@@ -412,7 +412,7 @@ def dynamic_acl_create_arp_forward_rule(duthost):
 
     expect_op_success(duthost, output)
 
-    expected_rule_content =  ["DYNAMIC_ACL_TABLE", "ARP_RULE", "9998", "FORWARD", "ETHER_TYPE: 0x0806", "Active"]
+    expected_rule_content =  ["DYNAMIC_ACL_TABLE", "ARP_RULE", "9997", "FORWARD", "ETHER_TYPE: 0x0806", "Active"]
 
     expect_acl_rule_match(duthost, "ARP_RULE", expected_rule_content)
 
@@ -656,11 +656,6 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic
 
     pkt = testutils.simple_arp_packet(eth_dst=setup["router_mac"])
 
-    packet = simple_arp_packet(
-            eth_src=src_mac, arp_op=1, ip_snd=src_addr, ip_tgt=dst_addr, hw_snd=src_mac)
-    expect = simple_arp_packet(
-        eth_dst=src_mac, arp_op=2, ip_snd=dst_addr, ip_tgt=src_addr, hw_tgt=src_mac)
-
     pkt = testutils.simple_arp_packet(pktlen=60,
                                 eth_src=ptfadapter.dataplane.get_mac(0, 0),
                                 vlan_vid=0,
@@ -703,9 +698,9 @@ def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynami
                                       ip_ttl=64)
 
     pktv6 = testutils.simple_udpv6_packet(eth_dst=setup["router_mac"],
-                                          ipv6_dst=DST_IPV6_BLOCKED,
+                                          ipv6_dst="ff02::1:2",
                                           ipv6_src=IPV6_SOURCE,
-                                          udp_dport=67)
+                                          udp_dport=547)
 
     packets = {"IPV4" : pkt, "IPV6" : pktv6}
 

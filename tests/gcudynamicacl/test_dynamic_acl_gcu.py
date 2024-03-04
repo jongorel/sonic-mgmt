@@ -418,7 +418,7 @@ def dynamic_acl_create_dhcp_forward_rule(duthost):
     expected_rule_content =  ["DYNAMIC_ACL_TABLE",
                               "DHCP_RULE", "9999",
                               "FORWARD",
-                              "IP_PROTOCOL: UDP",
+                              "IP_PROTOCOL: 0x11",
                               "L4_DST_PORT: 67",
                               "Active"]
 

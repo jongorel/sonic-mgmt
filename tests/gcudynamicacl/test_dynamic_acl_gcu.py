@@ -647,7 +647,7 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic
                                          eth_type=0x0806)
 
     dynamic_acl_create_arp_forward_rule(rand_selected_dut)
-    dynamic_acl_create_secondary_drop_rule(rand_selected_dut)
+    dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
 
     src_port = setup["blocked_src_port_indice"]
     exp_pkt = build_exp_pkt(pkt)
@@ -670,7 +670,7 @@ def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynami
     pktv6 = testutils.simple_udpv6_packet(eth_dst=setup["router_mac"], ipv6_dst=DST_IPV6_FORWARDED_ORIGINAL, ipv6_src=IPV6_SOURCE, udp_dport=67)
 
     dynamic_acl_create_dhcp_forward_rule(rand_selected_dut)
-    dynamic_acl_create_secondary_drop_rule(rand_selected_dut)
+    dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
 
     src_port = setup["blocked_src_port_indice"]
     exp_pkt = build_exp_pkt(pkt)

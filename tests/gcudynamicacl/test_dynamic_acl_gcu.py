@@ -61,7 +61,7 @@ MAX_DROP_RULE_PRIORITY = 9000
 
 
 @pytest.fixture(scope="module")
-def setup(rand_selected_dut, tbinfo, vlan_name, config_facts):
+def setup(rand_selected_dut, tbinfo, vlan_name):
     mg_facts = rand_selected_dut.get_extended_minigraph_facts(tbinfo)
     if "dualtor" in tbinfo["topo"]["name"]:
         vlan_name = list(mg_facts['minigraph_vlans'].keys())[0]
@@ -95,6 +95,8 @@ def setup(rand_selected_dut, tbinfo, vlan_name, config_facts):
         ipv6_address = DST_IPV6_FORWARDED_SCALE_PREFIX + str(i) + "::1"
         scale_dest_ips[ipv4_rule_name] = ipv4_address
         scale_dest_ips[ipv6_rule_name] = ipv6_address
+
+    config_facts = rand_selected_dut.config_facts(host=rand_selected_dut.hostname, source="running")['ansible_facts']
 
     vlans = config_facts['VLAN']
     topology = tbinfo['topo']['name']

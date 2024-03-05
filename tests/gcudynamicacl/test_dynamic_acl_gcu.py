@@ -3,13 +3,21 @@ import pytest
 import os
 import json
 
-from tests.common.helpers.assertions import pytest_assert
+from tests.common.helpers.assertions import pytest_assert, pytest_require
 
 from ptf.mask import Mask
 import ptf.packet as scapy
 
+from scapy.all import Ether, IPv6, ICMPv6ND_NS, ICMPv6ND_NA, \
+                      ICMPv6NDOptSrcLLAddr, in6_getnsmac, \
+                      in6_getnsma, inet_pton, inet_ntop, socket
+
+from tests.common import constants
 
 import ptf.testutils as testutils
+
+from ipaddress import ip_network, IPv6Network, IPv4Network
+from tests.arp.arp_utils import increment_ipv6_addr, increment_ipv4_addr
 
 from tests.generic_config_updater.gu_utils import apply_patch, expect_op_success, expect_op_failure
 from tests.generic_config_updater.gu_utils import generate_tmpfile, delete_tmpfile
@@ -142,6 +150,177 @@ def setup_env(duthosts, rand_one_dut_hostname):
         rollback_or_reload(duthost)
     finally:
         delete_checkpoint(duthost)
+
+
+@pytest.fixture(scope="module")
+def config_facts(duthosts, enum_rand_one_per_hwsku_frontend_hostname):
+    duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
+    return duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
+
+
+@pytest.fixture(scope="module")
+def intfs_for_test(duthosts, enum_rand_one_per_hwsku_frontend_hostname, enum_frontend_asic_index, tbinfo, config_facts):
+    duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
+    asic = duthost.asic_instance(enum_frontend_asic_index)
+    mg_facts = asic.get_extended_minigraph_facts(tbinfo)
+    external_ports = [p for p in list(mg_facts['minigraph_ports'].keys()) if 'BP' not in p]
+    ports = list(sorted(external_ports, key=lambda item: int(item.replace('Ethernet', ''))))
+    po1 = None
+    po2 = None
+
+    is_storage_backend = 'backend' in tbinfo['topo']['name']
+
+    if tbinfo['topo']['type'] == 't0':
+        if is_storage_backend:
+            vlan_sub_intfs = mg_facts['minigraph_vlan_sub_interfaces']
+            intfs_to_t1 = [_['attachto'].split(constants.VLAN_SUB_INTERFACE_SEPARATOR)[0] for _ in vlan_sub_intfs]
+            ports_for_test = [_ for _ in ports if _ not in intfs_to_t1]
+
+            intf1 = ports_for_test[0]
+            intf2 = ports_for_test[1]
+        else:
+            if 'PORTCHANNEL_MEMBER' in config_facts:
+                portchannel_members = []
+                for _, v in list(config_facts['PORTCHANNEL_MEMBER'].items()):
+                    portchannel_members += list(v.keys())
+                ports_for_test = [x for x in ports if x not in portchannel_members]
+            else:
+                ports_for_test = ports
+
+            # Select two interfaces for testing which are not in portchannel
+            intf1 = ports_for_test[0]
+            intf2 = ports_for_test[1]
+
+    logger.info("Selected ints are {0} and {1}".format(intf1, intf2))
+
+    if tbinfo['topo']['type'] == 't1' and is_storage_backend:
+        intf1_indice = mg_facts['minigraph_ptf_indices'][intf1.split(constants.VLAN_SUB_INTERFACE_SEPARATOR)[0]]
+        intf2_indice = mg_facts['minigraph_ptf_indices'][intf2.split(constants.VLAN_SUB_INTERFACE_SEPARATOR)[0]]
+    else:
+        intf1_indice = mg_facts['minigraph_ptf_indices'][intf1]
+        intf2_indice = mg_facts['minigraph_ptf_indices'][intf2]
+
+    asic.config_ip_intf(intf1, "10.10.1.2/28", "add")
+    asic.config_ip_intf(intf2, "10.10.1.20/28", "add")
+
+    yield intf1, intf2, intf1_indice, intf2_indice
+
+    asic.config_ip_intf(intf1, "10.10.1.2/28", "remove")
+    asic.config_ip_intf(intf2, "10.10.1.20/28", "remove")
+
+    if tbinfo['topo']['type'] != 't0':
+        if po1:
+            asic.config_portchannel_member(po1, intf1, "add")
+        if po2:
+            asic.config_portchannel_member(po2, intf2, "add")
+
+
+@pytest.fixture(scope='module')
+def ip_and_intf_info(config_facts, intfs_for_test, ptfhost, ptfadapter):
+    """
+    Calculate IP addresses and interface to use for test
+    """
+    ptf_ports_available_in_topo = ptfhost.host.options['variable_manager'].extra_vars.get("ifaces_map")
+
+    _, _, intf1_index, _, = intfs_for_test
+    ptf_intf_name = ptf_ports_available_in_topo[intf1_index]
+
+    # Calculate the IPv6 address to assign to the PTF port
+    vlan_addrs = list(list(config_facts['VLAN_INTERFACE'].items())[0][1].keys())
+    intf_ipv6_addr = None
+    intf_ipv4_addr = None
+
+    for addr in vlan_addrs:
+        try:
+            if type(ip_network(addr, strict=False)) is IPv6Network:
+                intf_ipv6_addr = ip_network(addr, strict=False)
+            elif type(ip_network(addr, strict=False)) is IPv4Network:
+                intf_ipv4_addr = ip_network(addr, strict=False)
+        except ValueError:
+            continue
+
+    # Increment address by 3 to offset it from the intf on which the address may be learned
+    if intf_ipv4_addr is not None:
+        ptf_intf_ipv4_addr = increment_ipv4_addr(intf_ipv4_addr.network_address, incr=3)
+        ptf_intf_ipv4_hosts = intf_ipv4_addr.hosts()
+    else:
+        ptf_intf_ipv4_addr = None
+        ptf_intf_ipv4_hosts = None
+
+    if intf_ipv6_addr is not None:
+        ptf_intf_ipv6_addr = increment_ipv6_addr(intf_ipv6_addr.network_address, incr=3)
+    else:
+        ptf_intf_ipv6_addr = None
+
+    logger.info("Using {}, {}, and PTF interface {}".format(ptf_intf_ipv4_addr, ptf_intf_ipv6_addr, ptf_intf_name))
+
+    return ptf_intf_ipv4_addr, ptf_intf_ipv4_hosts, ptf_intf_ipv6_addr, ptf_intf_name, intf1_index
+
+
+def generate_link_local_addr(mac):
+    parts = mac.split(":")
+    parts.insert(3, "ff")
+    parts.insert(4, "fe")
+    parts[0] = "{:x}".format(int(parts[0], 16) ^ 2)
+
+    ipv6Parts = []
+    for i in range(0, len(parts), 2):
+        ipv6Parts.append("".join(parts[i:i+2]))
+    ipv6 = "fe80::{}".format(":".join(ipv6Parts))
+    return ipv6
+
+
+@pytest.fixture(params=['v4'])#, 'v6'])
+def packets_for_test(request, ptfadapter, duthost, config_facts, tbinfo, ip_and_intf_info):
+    ip_version = request.param
+    src_addr_v4, _, src_addr_v6, _, ptf_intf_index = ip_and_intf_info
+    ptf_intf_mac = ptfadapter.dataplane.get_mac(0, ptf_intf_index)
+    vlans = config_facts['VLAN']
+    topology = tbinfo['topo']['name']
+    dut_mac = ''
+    for vlan_details in list(vlans.values()):
+        if 'dualtor' in topology:
+            dut_mac = vlan_details['mac'].lower()
+        else:
+            dut_mac = duthost.shell('sonic-cfggen -d -v \'DEVICE_METADATA.localhost.mac\'')["stdout_lines"][0]
+        break
+
+    if ip_version == 'v4':
+        tgt_addr = increment_ipv4_addr(src_addr_v4)
+        out_pkt = testutils.simple_arp_packet(
+                                eth_dst='ff:ff:ff:ff:ff:ff',
+                                eth_src=ptf_intf_mac,
+                                ip_snd=src_addr_v4,
+                                ip_tgt=tgt_addr,
+                                arp_op=1,
+                                hw_snd=ptf_intf_mac
+                            )
+        exp_pkt = testutils.simple_arp_packet(
+                                eth_dst=ptf_intf_mac,
+                                eth_src=dut_mac,
+                                ip_snd=tgt_addr,
+                                ip_tgt=src_addr_v4,
+                                arp_op=2,
+                                hw_snd=dut_mac,
+                                hw_tgt=ptf_intf_mac
+        )
+    elif ip_version == 'v6':
+        tgt_addr = increment_ipv6_addr(src_addr_v6)
+        ll_src_addr = generate_link_local_addr(ptf_intf_mac.decode())
+        multicast_tgt_addr = in6_getnsma(inet_pton(socket.AF_INET6, tgt_addr))
+        multicast_tgt_mac = in6_getnsmac(multicast_tgt_addr)
+        out_pkt = Ether(src=ptf_intf_mac, dst=multicast_tgt_mac)
+        out_pkt /= IPv6(dst=inet_ntop(socket.AF_INET6, multicast_tgt_addr), src=ll_src_addr)
+        out_pkt /= ICMPv6ND_NS(tgt=tgt_addr)
+        out_pkt /= ICMPv6NDOptSrcLLAddr(lladdr=ptf_intf_mac)
+
+        exp_pkt = Ether(src=dut_mac, dst=ptf_intf_mac)
+        exp_pkt /= IPv6(dst=ll_src_addr, src=generate_link_local_addr(dut_mac))
+        exp_pkt /= ICMPv6ND_NA(tgt=tgt_addr, S=1, R=1, O=0)
+        exp_pkt /= ICMPv6NDOptSrcLLAddr(type=2, lladdr=dut_mac)
+        exp_pkt = Mask(exp_pkt)
+        exp_pkt.set_do_not_care_scapy(scapy.IPv6, 'fl')
+    return ip_version, out_pkt, exp_pkt
 
 
 def verify_expected_packet_behavior(exp_pkt, ptfadapter, setup, expect_drop):
@@ -660,43 +839,30 @@ def dynamic_acl_remove_table_type(duthost):
     expect_op_success(duthost, output)
 
 
-def test_gcu_acl_arp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
+def test_gcu_acl_arp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table, packets_for_test, ip_and_intf_info):
     """Test that we can create a blanket ARP packet forwarding rule with GCU, and that ARP packets
     are correctly forwarded while all others are dropped"""
 
     dynamic_acl_create_arp_forward_rule(rand_selected_dut)
     dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
 
-    pkt = testutils.simple_arp_packet(pktlen=60,
-                                eth_dst='ff:ff:ff:ff:ff:ff',
-                                eth_src='00:06:07:08:09:00',
-                                vlan_vid=0,
-                                vlan_pcp=0,
-                                arp_op=1,
-                                ip_snd='10.10.1.3',
-                                ip_tgt='10.10.1.2',
-                                hw_snd='00:06:07:08:09:00',
-                                hw_tgt='ff:ff:ff:ff:ff:ff',
-                                )
-    exp_pkt = testutils.simple_arp_packet(eth_dst='00:06:07:08:09:00',
-                                eth_src=setup["dut_mac"],
-                                arp_op=2,
-                                ip_snd='10.10.1.2',
-                                ip_tgt='10.10.1.3',
-                                hw_tgt='00:06:07:08:09:00',
-                                hw_snd=setup["dut_mac"],
-                                )
+    ptf_intf_ipv4_addr, _, ptf_intf_ipv6_addr, _, ptf_intf_index = ip_and_intf_info
 
-    src_port = setup["blocked_src_port_indice"]
+    ip_version, outgoing_packet, expected_packet = packets_for_test
+
+    if ip_version == 'v4':
+        pytest_require(ptf_intf_ipv4_addr is not None, 'No IPv4 VLAN address configured on device')
+    elif ip_version == 'v6':
+        pytest_require(ptf_intf_ipv6_addr is not None, 'No IPv6 VLAN address configured on device')
+
     ptfadapter.dataplane.flush()
-    testutils.send_packet(ptfadapter, pkt=pkt, port_id=src_port)
-    testutils.verify_packet(ptfadapter, exp_pkt, src_port, timeout=10)
+    testutils.send_packet(ptfadapter, ptf_intf_index, outgoing_packet)
+    testutils.verify_packet(ptfadapter, expected_packet, ptf_intf_index, timeout=10)
 
     dynamic_acl_verify_packets(setup,
                                ptfadapter,
                                packets=generate_packets(setup, DST_IP_BLOCKED, DST_IPV6_BLOCKED),
-                               packets_dropped=True,
-                               src_port=src_port)
+                               packets_dropped=True)
 
 def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
     """Test that we can create a blanket DHCP packet forwarding rule with GCU, and that ARP packets

@@ -843,12 +843,16 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic
     """Test that we can create a blanket ARP packet forwarding rule with GCU, and that ARP packets
     are correctly forwarded while all others are dropped"""
 
-    dynamic_acl_create_arp_forward_rule(rand_selected_dut)
-    dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
 
-    ptf_intf_ipv4_addr, _, ptf_intf_ipv6_addr, _, ptf_intf_index = ip_and_intf_info
+    ptf_intf_ipv4_addr, _, ptf_intf_ipv6_addr, ptf_intf_name, ptf_intf_index = ip_and_intf_info
 
     ip_version, outgoing_packet, expected_packet = packets_for_test
+
+    setup["blocked_src_port_name"] = ptf_intf_name
+    setup["blocked_src_port_indice"] = ptf_intf_index
+
+    dynamic_acl_create_arp_forward_rule(rand_selected_dut)
+    dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
 
     if ip_version == 'v4':
         pytest_require(ptf_intf_ipv4_addr is not None, 'No IPv4 VLAN address configured on device')

@@ -61,7 +61,7 @@ MAX_DROP_RULE_PRIORITY = 9000
 
 
 @pytest.fixture(scope="module")
-def setup(rand_selected_dut, tbinfo, vlan_name):
+def setup(rand_selected_dut, tbinfo, vlan_name, config_facts):
     mg_facts = rand_selected_dut.get_extended_minigraph_facts(tbinfo)
     if "dualtor" in tbinfo["topo"]["name"]:
         vlan_name = list(mg_facts['minigraph_vlans'].keys())[0]
@@ -96,6 +96,16 @@ def setup(rand_selected_dut, tbinfo, vlan_name):
         scale_dest_ips[ipv4_rule_name] = ipv4_address
         scale_dest_ips[ipv6_rule_name] = ipv6_address
 
+    vlans = config_facts['VLAN']
+    topology = tbinfo['topo']['name']
+    dut_mac = ''
+    for vlan_details in list(vlans.values()):
+        if 'dualtor' in topology:
+            dut_mac = vlan_details['mac'].lower()
+        else:
+            dut_mac = rand_selected_dut.shell('sonic-cfggen -d -v \'DEVICE_METADATA.localhost.mac\'')["stdout_lines"][0]
+        break
+
     setup_information = {
         "blocked_src_port_name": block_src_port,
         "blocked_src_port_indice": block_src_port_indice,
@@ -106,6 +116,7 @@ def setup(rand_selected_dut, tbinfo, vlan_name):
         "dst_port_indices": dst_port_indices,
         "router_mac": router_mac,
         "bind_ports": list_ports,
+        "dut_mac": dut_mac,
     }
 
     return setup_information
@@ -655,7 +666,7 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic
     dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
 
     pkt = testutils.simple_arp_packet(pktlen=60,
-                                eth_dst=setup["router_mac"],
+                                eth_dst='ff:ff:ff:ff:ff:ff',
                                 eth_src='00:06:07:08:09:00',
                                 vlan_vid=0,
                                 vlan_pcp=0,
@@ -663,21 +674,21 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic
                                 ip_snd='10.10.1.3',
                                 ip_tgt='10.10.1.2',
                                 hw_snd='00:06:07:08:09:00',
-                                hw_tgt=setup["router_mac"],
+                                hw_tgt='ff:ff:ff:ff:ff:ff',
                                 )
     exp_pkt = testutils.simple_arp_packet(eth_dst='00:06:07:08:09:00',
-                                eth_src=setup["router_mac"],
+                                eth_src=setup["dut_mac"],
                                 arp_op=2,
                                 ip_snd='10.10.1.2',
                                 ip_tgt='10.10.1.3',
                                 hw_tgt='00:06:07:08:09:00',
-                                hw_snd=setup["router_mac"],
+                                hw_snd=setup["dut_mac"],
                                 )
 
     src_port = setup["blocked_src_port_indice"]
     ptfadapter.dataplane.flush()
-    testutils.send(ptfadapter, pkt=pkt, port_id=src_port)
-    testutils.verify_packet(ptfadapter, exp_pkt, src_port)
+    testutils.send_packet(ptfadapter, pkt=pkt, port_id=src_port)
+    testutils.verify_packet(ptfadapter, exp_pkt, src_port, timeout=10)
 
     dynamic_acl_verify_packets(setup,
                                ptfadapter,

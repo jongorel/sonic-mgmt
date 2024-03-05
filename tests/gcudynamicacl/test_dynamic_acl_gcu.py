@@ -720,7 +720,7 @@ def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynami
     masked_exp_pkt = Mask(pkt)
     masked_exp_pkt.set_do_not_care_scapy(scapy.Ether, "dst")
     masked_exp_pkt.set_do_not_care_scapy(scapy.Ether, "src")
-    masked_exp_pkt.set_do_not_care_scape(scapy.IP, "dst")
+    masked_exp_pkt.set_do_not_care_scapy(scapy.IP, "dst")
     # Send and verify packet
     ptfadapter.dataplane.flush()
     testutils.send(ptfadapter, pkt=pkt, port_id=src_port)

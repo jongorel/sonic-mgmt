@@ -677,7 +677,7 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic
     src_port = setup["blocked_src_port_indice"]
     ptfadapter.dataplane.flush()
     testutils.send(ptfadapter, pkt=pkt, port_id=src_port)
-    verify_expected_packet_behavior(exp_pkt, ptfadapter, setup, expect_drop=False)
+    testutils.verify_packet(ptfadapter, exp_pkt, src_port)
 
     dynamic_acl_verify_packets(setup,
                                ptfadapter,

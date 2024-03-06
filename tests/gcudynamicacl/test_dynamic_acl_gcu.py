@@ -361,14 +361,32 @@ def build_exp_pkt(input_pkt, is_dhcp=False):
     exp_pkt.set_do_not_care_scapy(scapy.Ether, "src")
     if input_pkt.haslayer('IP'):
         exp_pkt.set_do_not_care_scapy(scapy.IP, "chksum")
-        if is_dhcp:
-            exp_pkt.set_do_not_care_scapy(scapy.IP, "dst")
     else:
         exp_pkt.set_do_not_care_scapy(scapy.IPv6, "hlim")
         if is_dhcp:
             exp_pkt.set_do_not_care_scapy(scapy.IPv6, "dst")
 
     if is_dhcp:
+        if input_pkt.haslayer('IP'):
+            exp_pkt.set_do_not_care_scapy(scapy.IP, "version")
+            exp_pkt.set_do_not_care_scapy(scapy.IP, "ihl")
+            exp_pkt.set_do_not_care_scapy(scapy.IP, "tos")
+            exp_pkt.set_do_not_care_scapy(scapy.IP, "len")
+            exp_pkt.set_do_not_care_scapy(scapy.IP, "id")
+            exp_pkt.set_do_not_care_scapy(scapy.IP, "flags")
+            exp_pkt.set_do_not_care_scapy(scapy.IP, "frag")
+            exp_pkt.set_do_not_care_scapy(scapy.IP, "ttl")
+            exp_pkt.set_do_not_care_scapy(scapy.IP, "proto")
+            exp_pkt.set_do_not_care_scapy(scapy.IP, "chksum")
+            exp_pkt.set_do_not_care_scapy(scapy.IP, "src")
+            exp_pkt.set_do_not_care_scapy(scapy.IP, "dst")
+            exp_pkt.set_do_not_care_scapy(scapy.IP, "options")
+
+        exp_pkt.set_do_not_care_scapy(scapy.UDP, "chksum")
+        exp_pkt.set_do_not_care_scapy(scapy.UDP, "len")
+
+        exp_pkt.set_do_not_care_scapy(scapy.BOOTP, "sname")
+        exp_pkt.set_do_not_care_scapy(scapy.BOOTP, "file")
         exp_pkt.set_do_not_care_scapy(scapy.UDP, "sport")
         exp_pkt.set_do_not_care_scapy(scapy.UDP, "dport")
 

@@ -6,14 +6,14 @@
             "DYNAMIC_ACL_TABLE|DHCP_RULE": {
                 "IP_PROTOCOL": "17",
                 "L4_DST_PORT": "67",
-                "IP_TYPE": "IPV4",
+                "IP_TYPE": "IPv4ANY",
                 "PRIORITY": "9999",
                 "PACKET_ACTION": "FORWARD"
             },
             "DYNAMIC_ACL_TABLE|DHCPV6_RULE": {
                 "IP_PROTOCOL": "17",
                 "L4_DST_PORT": "547",
-                "IP_TYPE": "IPV6",
+                "IP_TYPE": "IPv6ANY",
                 "PRIORITY": "9998",
                 "PACKET_ACTION": "FORWARD"
             }

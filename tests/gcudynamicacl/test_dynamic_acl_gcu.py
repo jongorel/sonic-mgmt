@@ -627,7 +627,7 @@ def dynamic_acl_create_dhcp_forward_rule(duthost):
                               "IP_PROTOCOL: 17",
                               "L4_DST_PORT: 67",
                               "IP_TYPE: IPV4",
-                              "Active"]
+                              "Inactive"]
 
     expected_v6_rule_content =  ["DYNAMIC_ACL_TABLE",
                               "DHCPV6_RULE", "9998",
@@ -635,7 +635,7 @@ def dynamic_acl_create_dhcp_forward_rule(duthost):
                               "IP_PROTOCOL: 17",
                               "L4_DST_PORT: 547",
                               "IP_TYPE: IPV6",
-                              "Active"]
+                              "Inactive"]
 
     expect_acl_rule_match(duthost, "DHCP_RULE", expected_rule_content)
     expect_acl_rule_match(duthost, "DHCPV6_RULE", expected_v6_rule_content)

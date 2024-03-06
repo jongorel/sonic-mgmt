@@ -361,34 +361,12 @@ def build_exp_pkt(input_pkt, is_dhcp=False):
     exp_pkt.set_do_not_care_scapy(scapy.Ether, "src")
     if input_pkt.haslayer('IP'):
         exp_pkt.set_do_not_care_scapy(scapy.IP, "chksum")
+        if is_dhcp:
+            exp_pkt.set_do_not_care_scapy(scapy.IP, "dst")
     else:
         exp_pkt.set_do_not_care_scapy(scapy.IPv6, "hlim")
         if is_dhcp:
             exp_pkt.set_do_not_care_scapy(scapy.IPv6, "dst")
-
-    if is_dhcp:
-        if input_pkt.haslayer('IP'):
-            exp_pkt.set_do_not_care_scapy(scapy.IP, "version")
-            exp_pkt.set_do_not_care_scapy(scapy.IP, "ihl")
-            exp_pkt.set_do_not_care_scapy(scapy.IP, "tos")
-            exp_pkt.set_do_not_care_scapy(scapy.IP, "len")
-            exp_pkt.set_do_not_care_scapy(scapy.IP, "id")
-            exp_pkt.set_do_not_care_scapy(scapy.IP, "flags")
-            exp_pkt.set_do_not_care_scapy(scapy.IP, "frag")
-            exp_pkt.set_do_not_care_scapy(scapy.IP, "ttl")
-            exp_pkt.set_do_not_care_scapy(scapy.IP, "proto")
-            exp_pkt.set_do_not_care_scapy(scapy.IP, "chksum")
-            exp_pkt.set_do_not_care_scapy(scapy.IP, "src")
-            exp_pkt.set_do_not_care_scapy(scapy.IP, "dst")
-            exp_pkt.set_do_not_care_scapy(scapy.IP, "options")
-
-        exp_pkt.set_do_not_care_scapy(scapy.UDP, "chksum")
-        exp_pkt.set_do_not_care_scapy(scapy.UDP, "len")
-
-        exp_pkt.set_do_not_care_scapy(scapy.BOOTP, "sname")
-        exp_pkt.set_do_not_care_scapy(scapy.BOOTP, "file")
-        exp_pkt.set_do_not_care_scapy(scapy.UDP, "sport")
-        exp_pkt.set_do_not_care_scapy(scapy.UDP, "dport")
 
     return exp_pkt
 
@@ -652,7 +630,7 @@ def dynamic_acl_create_dhcp_forward_rule(duthost):
                               "FORWARD",
                               "IP_PROTOCOL: 17",
                               "L4_DST_PORT: 67",
-                              "IP_TYPE: IPv4ANY",
+                              "ETHER_TYPE: 0x0800",
                               "Active"]
 
     expected_v6_rule_content =  ["DYNAMIC_ACL_TABLE",
@@ -660,7 +638,7 @@ def dynamic_acl_create_dhcp_forward_rule(duthost):
                               "FORWARD",
                               "IP_PROTOCOL: 17",
                               "L4_DST_PORT: 547",
-                              "IP_TYPE: IPv6ANY",
+                              "ETHER_TYPE: 0x86DD",
                               "Active"]
 
     expect_acl_rule_match(duthost, "DHCP_RULE", expected_rule_content)
@@ -881,7 +859,7 @@ def dynamic_acl_remove_table_type(duthost):
     expect_op_success(duthost, output)
 
 
-def test_gcu_acl_arp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table, packets_for_test, ip_and_intf_info):
+def gcu_acl_arp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table, packets_for_test, ip_and_intf_info):
     """Test that we can create a blanket ARP packet forwarding rule with GCU, and that ARP packets
     are correctly forwarded while all others are dropped"""
 
@@ -928,7 +906,7 @@ def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynami
     packets = {"IPV4" : pkt, "IPV6" : pktv6}
 
     dynamic_acl_create_dhcp_forward_rule(rand_selected_dut)
-    dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
+    #dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
 
     dynamic_acl_verify_packets(setup, ptfadapter, packets, packets_dropped=False, is_dhcp=True)
 

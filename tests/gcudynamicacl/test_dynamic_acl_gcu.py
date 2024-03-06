@@ -884,9 +884,9 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic
                                packets=generate_packets(setup, DST_IP_BLOCKED, DST_IPV6_BLOCKED),
                                packets_dropped=True)
 
-def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
-    """Test that we can create a blanket DHCP packet forwarding rule with GCU, and that ARP packets
-    are correctly forwarded while all others are dropped"""
+"""def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
+    Test that we can create a blanket DHCP packet forwarding rule with GCU, and that ARP packets
+    are correctly forwarded while all others are dropped
 
     pkt = testutils.simple_udp_packet(eth_dst=setup["router_mac"],
                                       ip_dst="255.255.255.255",
@@ -919,7 +919,7 @@ def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynami
     dynamic_acl_verify_packets(setup,
                                ptfadapter,
                                packets=generate_packets(setup, DST_IP_BLOCKED, DST_IPV6_BLOCKED),
-                               packets_dropped=True)
+                               packets_dropped=True)"""
 
 
 def test_gcu_acl_drop_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):

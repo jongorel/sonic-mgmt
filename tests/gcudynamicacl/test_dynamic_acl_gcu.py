@@ -222,7 +222,7 @@ def ip_and_intf_info(config_facts, intfs_for_test, ptfhost, ptfadapter):
     """
     ptf_ports_available_in_topo = ptfhost.host.options['variable_manager'].extra_vars.get("ifaces_map")
 
-    _, _, intf1_index, _, = intfs_for_test
+    intf1_name, _, intf1_index, _, = intfs_for_test
     ptf_intf_name = ptf_ports_available_in_topo[intf1_index]
 
     # Calculate the IPv6 address to assign to the PTF port
@@ -254,7 +254,7 @@ def ip_and_intf_info(config_facts, intfs_for_test, ptfhost, ptfadapter):
 
     logger.info("Using {}, {}, and PTF interface {}".format(ptf_intf_ipv4_addr, ptf_intf_ipv6_addr, ptf_intf_name))
 
-    return ptf_intf_ipv4_addr, ptf_intf_ipv4_hosts, ptf_intf_ipv6_addr, ptf_intf_name, intf1_index
+    return ptf_intf_ipv4_addr, ptf_intf_ipv4_hosts, ptf_intf_ipv6_addr, ptf_intf_name, intf1_index, intf1_name
 
 
 def generate_link_local_addr(mac):
@@ -273,7 +273,7 @@ def generate_link_local_addr(mac):
 @pytest.fixture(params=['v4'])#, 'v6'])
 def packets_for_test(request, ptfadapter, duthost, config_facts, tbinfo, ip_and_intf_info):
     ip_version = request.param
-    src_addr_v4, _, src_addr_v6, _, ptf_intf_index = ip_and_intf_info
+    src_addr_v4, _, src_addr_v6, _, ptf_intf_index, _ = ip_and_intf_info
     ptf_intf_mac = ptfadapter.dataplane.get_mac(0, ptf_intf_index)
     vlans = config_facts['VLAN']
     topology = tbinfo['topo']['name']
@@ -434,7 +434,13 @@ def expect_acl_rule_match(duthost, rulename, expected_content_list):
 
     pytest_assert(rule_lines >= 1, "'{}' is not a rule on this device".format(rulename))
 
-    pytest_assert(set(output[0].values()) <= set(expected_content_list), "ACL Rule details do not match!")
+    first_line = output[0].values()
+
+    missing = set(first_line).difference(set(expected_content_list))
+
+    extra = set(expected_content_list).difference(set(first_line))
+
+    pytest_assert(set(first_line) <= set(expected_content_list), "ACL Rule details do not match!")
 
     if rule_lines > 1:
         for i in range(1, rule_lines):
@@ -854,11 +860,11 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic
     are correctly forwarded while all others are dropped"""
 
 
-    ptf_intf_ipv4_addr, _, ptf_intf_ipv6_addr, ptf_intf_name, ptf_intf_index = ip_and_intf_info
+    ptf_intf_ipv4_addr, _, ptf_intf_ipv6_addr, _, ptf_intf_index, port_name = ip_and_intf_info
 
     ip_version, outgoing_packet, expected_packet = packets_for_test
 
-    setup["blocked_src_port_name"] = ptf_intf_name
+    setup["blocked_src_port_name"] = port_name
     setup["blocked_src_port_indice"] = ptf_intf_index
 
     dynamic_acl_create_arp_forward_rule(rand_selected_dut)

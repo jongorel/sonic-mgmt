@@ -368,6 +368,10 @@ def build_exp_pkt(input_pkt, is_dhcp=False):
         if is_dhcp:
             exp_pkt.set_do_not_care_scapy(scapy.IPv6, "dst")
 
+    if is_dhcp:
+        exp_pkt.set_do_not_care_scapy(scapy.UDP, "sport")
+        exp_pkt.set_do_not_care_scapy(scapy.UDP, "dport")
+
     return exp_pkt
 
 

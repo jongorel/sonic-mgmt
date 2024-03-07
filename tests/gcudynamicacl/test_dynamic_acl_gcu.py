@@ -67,7 +67,6 @@ DST_IPV6_BLOCKED = "103:23:3:1::1"
 MAX_IP_RULE_PRIORITY = 9900
 MAX_DROP_RULE_PRIORITY = 9000
 
-
 @pytest.fixture(scope="module")
 def setup(rand_selected_dut, tbinfo, vlan_name):
     mg_facts = rand_selected_dut.get_extended_minigraph_facts(tbinfo)
@@ -859,7 +858,7 @@ def dynamic_acl_remove_table_type(duthost):
     expect_op_success(duthost, output)
 
 
-def gcu_acl_arp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table, packets_for_test, ip_and_intf_info):
+def test_gcu_acl_arp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table, packets_for_test, ip_and_intf_info):
     """Test that we can create a blanket ARP packet forwarding rule with GCU, and that ARP packets
     are correctly forwarded while all others are dropped"""
 
@@ -893,7 +892,7 @@ def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynami
     are correctly forwarded while all others are dropped"""
 
     pkt = testutils.simple_udp_packet(eth_dst=setup["router_mac"],
-                                      ip_dst="255.255.255.255",
+                                      ip_dst=DST_IP_BLOCKED,
                                       ip_src=IP_SOURCE,
                                       udp_dport=67,
                                       ip_ttl=64)
@@ -906,7 +905,7 @@ def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynami
     packets = {"IPV4" : pkt, "IPV6" : pktv6}
 
     dynamic_acl_create_dhcp_forward_rule(rand_selected_dut)
-    #dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
+    dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
 
     dynamic_acl_verify_packets(setup, ptfadapter, packets, packets_dropped=False, is_dhcp=True)
 

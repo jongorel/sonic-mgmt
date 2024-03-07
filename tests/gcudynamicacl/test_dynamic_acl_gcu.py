@@ -67,6 +67,7 @@ DST_IPV6_BLOCKED = "103:23:3:1::1"
 MAX_IP_RULE_PRIORITY = 9900
 MAX_DROP_RULE_PRIORITY = 9000
 
+
 @pytest.fixture(scope="module")
 def setup(rand_selected_dut, tbinfo, vlan_name):
     mg_facts = rand_selected_dut.get_extended_minigraph_facts(tbinfo)
@@ -898,7 +899,7 @@ def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynami
                                       ip_ttl=64)
 
     pktv6 = testutils.simple_udpv6_packet(eth_dst=setup["router_mac"],
-                                          ipv6_dst="ff02::1:2",
+                                          ipv6_dst=DST_IPV6_BLOCKED,
                                           ipv6_src=IPV6_SOURCE,
                                           udp_dport=547)
 

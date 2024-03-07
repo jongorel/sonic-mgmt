@@ -151,6 +151,48 @@ def setup_env(duthosts, rand_one_dut_hostname):
     finally:
         delete_checkpoint(duthost)
 
+@pytest.fixture
+def proxy_arp_enabled(rand_selected_dut, config_facts):
+    """
+    Tries to enable proxy ARP for each VLAN on the ToR
+
+    Also checks CONFIG_DB to see if the attempt was successful
+
+    During teardown, restores the original proxy ARP setting
+
+    Yields:
+        (bool) True if proxy ARP was enabled for all VLANs,
+               False otherwise
+    """
+    duthost = rand_selected_dut
+    pytest_require(duthost.has_config_subcommand('config vlan proxy_arp'), "Proxy ARP command does not exist on device")
+
+    proxy_arp_check_cmd = 'sonic-db-cli CONFIG_DB HGET "VLAN_INTERFACE|Vlan{}" proxy_arp'
+    proxy_arp_config_cmd = 'config vlan proxy_arp {} {}'
+    vlans = config_facts['VLAN']
+    vlan_ids = [vlans[vlan]['vlanid'] for vlan in list(vlans.keys())]
+    old_proxy_arp_vals = {}
+    new_proxy_arp_vals = []
+
+    # Enable proxy ARP/NDP for the VLANs on the DUT
+    for vid in vlan_ids:
+        old_proxy_arp_res = duthost.shell(proxy_arp_check_cmd.format(vid))
+        old_proxy_arp_vals[vid] = old_proxy_arp_res['stdout']
+
+        duthost.shell(proxy_arp_config_cmd.format(vid, 'enabled'))
+
+        logger.info("Enabled proxy ARP for Vlan{}".format(vid))
+        new_proxy_arp_res = duthost.shell(proxy_arp_check_cmd.format(vid))
+        new_proxy_arp_vals.append(new_proxy_arp_res['stdout'])
+
+    yield all('enabled' in val for val in new_proxy_arp_vals)
+
+    proxy_arp_del_cmd = 'sonic-db-cli CONFIG_DB HDEL "VLAN_INTERFACE|Vlan{}" proxy_arp'
+    for vid, proxy_arp_val in list(old_proxy_arp_vals.items()):
+        if 'enabled' not in proxy_arp_val:
+            # Delete the DB entry instead of using the config command to satisfy check_dut_health_status
+            duthost.shell(proxy_arp_del_cmd.format(vid))
+
 
 @pytest.fixture(scope="module")
 def config_facts(duthosts, enum_rand_one_per_hwsku_frontend_hostname):
@@ -859,7 +901,7 @@ def dynamic_acl_remove_table_type(duthost):
     expect_op_success(duthost, output)
 
 
-def test_gcu_acl_arp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table, packets_for_test, ip_and_intf_info):
+def test_gcu_acl_arp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table, packets_for_test, ip_and_intf_info, proxy_arp_enabled):
     """Test that we can create a blanket ARP packet forwarding rule with GCU, and that ARP packets
     are correctly forwarded while all others are dropped"""
 

@@ -389,7 +389,7 @@ def generate_packets(setup, dst_ip=DST_IP_FORWARDED_ORIGINAL, dst_ipv6=DST_IPV6_
     return packets
 
 
-def build_exp_pkt(input_pkt, is_dhcp=False):
+def build_exp_pkt(input_pkt):
     """
     Generate the expected packet for given packet
     """
@@ -401,12 +401,8 @@ def build_exp_pkt(input_pkt, is_dhcp=False):
     exp_pkt.set_do_not_care_scapy(scapy.Ether, "src")
     if input_pkt.haslayer('IP'):
         exp_pkt.set_do_not_care_scapy(scapy.IP, "chksum")
-        if is_dhcp:
-            exp_pkt.set_do_not_care_scapy(scapy.IP, "dst")
     else:
         exp_pkt.set_do_not_care_scapy(scapy.IPv6, "hlim")
-        if is_dhcp:
-            exp_pkt.set_do_not_care_scapy(scapy.IPv6, "dst")
 
     return exp_pkt
 
@@ -555,6 +551,7 @@ def dynamic_acl_create_three_drop_rules(duthost, setup):
     expect_acl_rule_match(duthost, "RULE_4", expected_rule_4_content)
     expect_acl_rule_match(duthost, "RULE_5", expected_rule_5_content)
 
+
 def dynamic_acl_create_arp_forward_rule(duthost):
     """Create an ARP forward rule with the highest priority"""
 
@@ -567,7 +564,7 @@ def dynamic_acl_create_arp_forward_rule(duthost):
     expect_acl_rule_match(duthost, "ARP_RULE", expected_rule_content)
 
 
-def dynamic_acl_verify_packets(setup, ptfadapter, packets, packets_dropped, src_port=None, is_dhcp=False):
+def dynamic_acl_verify_packets(setup, ptfadapter, packets, packets_dropped, src_port=None):
     """Verify that the given packets are either dropped/forwarded correctly
 
     Args:
@@ -584,7 +581,7 @@ def dynamic_acl_verify_packets(setup, ptfadapter, packets, packets_dropped, src_
 
     for rule, pkt in list(packets.items()):
         logger.info("Testing that {} packets are correctly {}".format(rule, action_type))
-        exp_pkt = build_exp_pkt(pkt, is_dhcp)
+        exp_pkt = build_exp_pkt(pkt)
         # Send and verify packet
         ptfadapter.dataplane.flush()
         testutils.send(ptfadapter, pkt=pkt, port_id=src_port)
@@ -781,7 +778,13 @@ def dynamic_acl_remove_table_type(duthost):
     expect_op_success(duthost, output)
 
 
-def test_gcu_acl_arp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table, packets_for_test, ip_and_intf_info, proxy_arp_enabled):
+def test_gcu_acl_arp_rule_creation(rand_selected_dut,
+                                   ptfadapter,
+                                   setup,
+                                   dynamic_acl_create_table,
+                                   packets_for_test,
+                                   ip_and_intf_info,
+                                   proxy_arp_enabled):
     """Test that we can create a blanket ARP packet forwarding rule with GCU, and that ARP packets
     are correctly forwarded while all others are dropped"""
 

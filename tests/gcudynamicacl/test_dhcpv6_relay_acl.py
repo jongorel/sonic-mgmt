@@ -27,7 +27,7 @@ CREATE_CUSTOM_TABLE_TYPE_FILE = "create_custom_table_type.json"
 CREATE_CUSTOM_TABLE_TEMPLATE = "create_custom_table.j2"
 
 pytestmark = [
-    pytest.mark.topology('t0', 'm0', 'mx'),
+    pytest.mark.topology('t0', 'm0'),
     pytest.mark.device_type('vs')
 ]
 
@@ -48,6 +48,7 @@ def create_custom_table_type(rand_selected_dut):
     output = load_and_apply_json_patch(rand_selected_dut, CREATE_CUSTOM_TABLE_TYPE_FILE)
 
     expect_op_success(rand_selected_dut, output)
+
 
 def create_custom_table(rand_selected_dut, client_port_name):
     """Create a new ACL table that can be used"""
@@ -73,6 +74,7 @@ def create_custom_table(rand_selected_dut, client_port_name):
                                              expected_first_line,
                                              expected_bindings)
 
+
 def create_dhcp_forwarding_rule(rand_selected_dut):
     """Create a ACL rule that will forward all DHCPv6 related traffic"""
 
@@ -89,6 +91,7 @@ def create_dhcp_forwarding_rule(rand_selected_dut):
                               "Active"]
 
     expect_acl_rule_match(rand_selected_dut, "DHCPV6_RULE", expected_v6_rule_content)
+
 
 def create_drop_rule(rand_selected_dut, client_port_name):
     """Create a drop rule on the port that we will be sending DHCPv6 traffic requests from"""
@@ -125,11 +128,13 @@ def set_up_acl_for_testing_via_gcu(rand_selected_dut, client_port_name):
 
     create_drop_rule(rand_selected_dut, client_port_name)
 
+
 def tear_down_acl_for_testing_via_gcu(rand_selected_dut):
 
     rollback_or_reload(rand_selected_dut)
 
     delete_checkpoint(rand_selected_dut)
+
 
 def wait_all_bgp_up(duthost):
     config_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
@@ -359,4 +364,3 @@ def test_dhcp_relay_default(ptfhost, dut_dhcp_relay_data, validate_dut_routes_ex
                    log_file="/tmp/dhcpv6_relay_test.DHCPTest.log", is_python3=True)
         # roll back to initial checkpoint set before making ACL
         tear_down_acl_for_testing_via_gcu(duthost)
-

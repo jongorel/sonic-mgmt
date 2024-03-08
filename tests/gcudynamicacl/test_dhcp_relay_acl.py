@@ -42,12 +42,14 @@ CREATE_CUSTOM_TABLE_TEMPLATE = "create_custom_table.j2"
 
 logger = logging.getLogger(__name__)
 
+
 def create_custom_table_type(rand_selected_dut):
     """Create a new ACL table type that can be used"""
 
     output = load_and_apply_json_patch(rand_selected_dut, CREATE_CUSTOM_TABLE_TYPE_FILE)
 
     expect_op_success(rand_selected_dut, output)
+
 
 def create_custom_table(rand_selected_dut, client_port_name):
     """Create a new ACL table that can be used"""
@@ -73,6 +75,7 @@ def create_custom_table(rand_selected_dut, client_port_name):
                                              expected_first_line,
                                              expected_bindings)
 
+
 def create_dhcp_forwarding_rule(rand_selected_dut):
     """Create a ACL rule that will forward all DHCP related traffic"""
 
@@ -89,6 +92,7 @@ def create_dhcp_forwarding_rule(rand_selected_dut):
                               "Active"]
 
     expect_acl_rule_match(rand_selected_dut, "DHCP_RULE", expected_rule_content)
+
 
 def create_drop_rule(rand_selected_dut, client_port_name):
     """Create a drop rule on the port that we will be sending DHCP traffic requests from"""

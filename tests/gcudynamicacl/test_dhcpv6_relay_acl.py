@@ -61,7 +61,7 @@ def create_custom_table(rand_selected_dut, client_port_name):
     expected_bindings = [client_port_name]
     expected_first_line = ["DYNAMIC_ACL_TABLE",
                            "DYNAMIC_ACL_TABLE_TYPE",
-                           [client_port_name],
+                           client_port_name,
                            "DYNAMIC_ACL_TABLE",
                            "ingress",
                            "Active"]

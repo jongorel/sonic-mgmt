@@ -39,17 +39,9 @@ dhcp_patch = [
         "op": "add",
         "path": "/ACL_RULE",
         "value": {
-            "DYNAMIC_ACL_TABLE|DHCP_RULE": {
-                "IP_PROTOCOL": "17",
-                "L4_DST_PORT": "67",
-                "ETHER_TYPE": "0x0800",
-                "PRIORITY": "9999",
-                "PACKET_ACTION": "FORWARD"
-            },
             "DYNAMIC_ACL_TABLE|DHCPV6_RULE": {
                 "IP_PROTOCOL": "17",
-                "L4_DST_PORT": "547",
-                "ETHER_TYPE": "0x86DD",
+                "DST_IPV6": "ff02::1:2/128",
                 "PRIORITY": "9998",
                 "PACKET_ACTION": "FORWARD"
             }
@@ -481,6 +473,12 @@ def test_dhcp_relay_default(ptfhost, dut_dhcp_relay_data, validate_dut_routes_ex
         delete_tmpfile(duthost, tmpfile)
 
     expect_op_success(duthost, output)
+
+    output = duthost.show_and_parse("show acl rule DYNAMIC_ACL_TABLE DHCPV6_RULE")
+
+    first_line = output[0].values()
+
+    pytest_assert("Active" in set(first_line), str(first_line) + " does not contain Active!")
 
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {}".format(tmpfile))

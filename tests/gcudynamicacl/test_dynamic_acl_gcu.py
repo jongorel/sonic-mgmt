@@ -22,17 +22,15 @@ from tests.arp.arp_utils import increment_ipv6_addr, increment_ipv4_addr
 from tests.generic_config_updater.gu_utils import apply_patch, expect_op_success, expect_op_failure
 from tests.generic_config_updater.gu_utils import generate_tmpfile, delete_tmpfile
 from tests.generic_config_updater.gu_utils import create_checkpoint, delete_checkpoint, rollback_or_reload
+from tests.generic_config_updater.gu_utils import format_and_apply_template, load_and_apply_json_patch
+from tests.generic_config_updater.gu_utils import expect_acl_rule_match, expect_acl_rule_removed
+from tests.generic_config_updater.gu_utils import expect_acl_table_match_multiple_bindings
 
 pytestmark = [
     pytest.mark.topology('t0'),
 ]
 
 logger = logging.getLogger(__name__)
-
-BASE_DIR = os.path.dirname(os.path.realpath(__file__))
-FILES_DIR = os.path.join(BASE_DIR, "files")
-TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
-TMP_DIR = '/tmp'
 
 CREATE_CUSTOM_TABLE_TYPE_FILE = "create_custom_table_type.json"
 CREATE_CUSTOM_TABLE_TEMPLATE = "create_custom_table.j2"
@@ -41,7 +39,6 @@ CREATE_INITIAL_DROP_RULE_TEMPLATE = "create_initial_drop_rule.j2"
 CREATE_SECONDARY_DROP_RULE_TEMPLATE = "create_secondary_drop_rule.j2"
 CREATE_THREE_DROP_RULES_TEMPLATE = "create_three_drop_rules.j2"
 CREATE_ARP_FORWARD_RULE_FILE = "create_arp_forward_rule.json"
-CREATE_DHCP_FORWARD_RULE_FILE = "create_dhcp_forward_rule.json"
 REPLACE_RULES_TEMPLATE = "replace_rules.j2"
 REPLACE_NONEXISTENT_RULE_FILE = "replace_nonexistent_rule.json"
 REMOVE_RULE_TEMPLATE = "remove_rule.j2"
@@ -150,6 +147,7 @@ def setup_env(duthosts, rand_one_dut_hostname):
         rollback_or_reload(duthost)
     finally:
         delete_checkpoint(duthost)
+
 
 @pytest.fixture
 def proxy_arp_enabled(rand_selected_dut, config_facts):
@@ -413,98 +411,6 @@ def build_exp_pkt(input_pkt, is_dhcp=False):
     return exp_pkt
 
 
-def format_and_apply_template(duthost, template_name, extra_vars):
-    dest_path = os.path.join(TMP_DIR, template_name)
-    duthost.host.options['variable_manager'].extra_vars.update(extra_vars)
-    duthost.file(path=dest_path, state='absent')
-    duthost.template(src=os.path.join(TEMPLATES_DIR, template_name), dest=dest_path)
-
-    # duthost.template uses single quotes, which breaks apply-patch. this replaces them with double quotes
-    duthost.shell("sed -i \"s/'/\\\"/g\" " + dest_path)
-
-    output = duthost.shell("config apply-patch {}".format(dest_path))
-
-    duthost.file(path=dest_path, state='absent')
-
-    return output
-
-
-def load_and_apply_json_patch(duthost, file_name):
-    with open(os.path.join(TEMPLATES_DIR, file_name)) as file:
-        json_patch = json.load(file)
-
-    tmpfile = generate_tmpfile(duthost)
-    logger.info("tmpfile {}".format(tmpfile))
-
-    try:
-        output = apply_patch(duthost, json_data=json_patch, dest_file=tmpfile)
-    finally:
-        delete_tmpfile(duthost, tmpfile)
-
-    return output
-
-
-def expect_acl_table_match_multiple_bindings(duthost, table_name, expected_first_line_content, expected_bindings):
-    """Check if acl table show as expected
-    Acl table with multiple bindings will show as such
-
-    Table_Name  Table_Type  Ethernet4   Table_Description   ingress
-                            Ethernet8
-                            Ethernet12
-                            Ethernet16
-
-    So we must have separate checks for first line and bindings
-    """
-
-    cmds = "show acl table {}".format(table_name)
-
-    output = duthost.show_and_parse(cmds)
-    pytest_assert(len(output) > 0, "'{}' is not a table on this device".format(table_name))
-
-    first_line = output[0]
-    pytest_assert(set(first_line.values()) == set(expected_first_line_content))
-    table_bindings = [first_line["binding"]]
-    for i in range(len(output)):
-        table_bindings.append(output[i]["binding"])
-    pytest_assert(set(table_bindings) == set(expected_bindings), "ACL Table bindings don't fully match")
-
-
-def expect_acl_rule_match(duthost, rulename, expected_content_list):
-    """Check if acl rule shows as expected"""
-
-    cmds = "show acl rule DYNAMIC_ACL_TABLE {}".format(rulename)
-
-    output = duthost.show_and_parse(cmds)
-
-    rule_lines = len(output)
-
-    pytest_assert(rule_lines >= 1, "'{}' is not a rule on this device".format(rulename))
-
-    first_line = output[0].values()
-
-    missing = set(first_line).difference(set(expected_content_list))
-
-    extra = set(expected_content_list).difference(set(first_line))
-
-    pytest_assert(set(first_line) <= set(expected_content_list), "ACL Rule details do not match!")
-
-    if rule_lines > 1:
-        for i in range(1, rule_lines):
-            pytest_assert(output[i]["match"] in expected_content_list, "Unexpected match condition found: " + str(output[i]["match"]))
-
-
-
-def expect_acl_rule_removed(duthost, rulename):
-    """Check if ACL rule has been successfully removed"""
-
-    cmds = "show acl rule DYNAMIC_ACL_TABLE {}".format(rulename)
-    output = duthost.show_and_parse(cmds)
-
-    removed = len(output) == 0
-
-    pytest_assert(removed, "'{}' showed a rule, this following rule should have been removed".format(cmds))
-
-
 @pytest.fixture(scope="module")
 def dynamic_acl_create_table_type(rand_selected_dut):
     """Create a new ACL table type that can be used"""
@@ -659,32 +565,6 @@ def dynamic_acl_create_arp_forward_rule(duthost):
     expected_rule_content =  ["DYNAMIC_ACL_TABLE", "ARP_RULE", "9997", "FORWARD", "ETHER_TYPE: 0x0806", "Active"]
 
     expect_acl_rule_match(duthost, "ARP_RULE", expected_rule_content)
-
-def dynamic_acl_create_dhcp_forward_rule(duthost):
-    """Create a DHCP forward rule with the highest priority"""
-
-    output = load_and_apply_json_patch(duthost, CREATE_DHCP_FORWARD_RULE_FILE)
-
-    expect_op_success(duthost, output)
-
-    expected_rule_content =  ["DYNAMIC_ACL_TABLE",
-                              "DHCP_RULE", "9999",
-                              "FORWARD",
-                              "IP_PROTOCOL: 17",
-                              "L4_DST_PORT: 67",
-                              "ETHER_TYPE: 0x0800",
-                              "Active"]
-
-    expected_v6_rule_content =  ["DYNAMIC_ACL_TABLE",
-                              "DHCPV6_RULE", "9998",
-                              "FORWARD",
-                              "IP_PROTOCOL: 17",
-                              "L4_DST_PORT: 547",
-                              "ETHER_TYPE: 0x86DD",
-                              "Active"]
-
-    expect_acl_rule_match(duthost, "DHCP_RULE", expected_rule_content)
-    expect_acl_rule_match(duthost, "DHCPV6_RULE", expected_v6_rule_content)
 
 
 def dynamic_acl_verify_packets(setup, ptfadapter, packets, packets_dropped, src_port=None, is_dhcp=False):
@@ -924,33 +804,6 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic
     ptfadapter.dataplane.flush()
     testutils.send_packet(ptfadapter, ptf_intf_index, outgoing_packet)
     testutils.verify_packet(ptfadapter, expected_packet, ptf_intf_index, timeout=10)
-
-    dynamic_acl_verify_packets(setup,
-                               ptfadapter,
-                               packets=generate_packets(setup, DST_IP_BLOCKED, DST_IPV6_BLOCKED),
-                               packets_dropped=True)
-
-def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
-    """Test that we can create a blanket DHCP packet forwarding rule with GCU, and that ARP packets
-    are correctly forwarded while all others are dropped"""
-
-    pkt = testutils.simple_udp_packet(eth_dst=setup["router_mac"],
-                                      ip_dst=DST_IP_BLOCKED,
-                                      ip_src=IP_SOURCE,
-                                      udp_dport=67,
-                                      ip_ttl=64)
-
-    pktv6 = testutils.simple_udpv6_packet(eth_dst=setup["router_mac"],
-                                          ipv6_dst=DST_IPV6_BLOCKED,
-                                          ipv6_src=IPV6_SOURCE,
-                                          udp_dport=547)
-
-    packets = {"IPV4" : pkt, "IPV6" : pktv6}
-
-    dynamic_acl_create_dhcp_forward_rule(rand_selected_dut)
-    dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
-
-    dynamic_acl_verify_packets(setup, ptfadapter, packets, packets_dropped=False, is_dhcp=True)
 
     dynamic_acl_verify_packets(setup,
                                ptfadapter,

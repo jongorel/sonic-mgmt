@@ -304,7 +304,7 @@ def test_dhcpv6_relay_counter(ptfhost, duthosts, rand_one_dut_hostname, dut_dhcp
                     # Single tor, Relay-Reply will be received on downlink_vlan_iface
                     check_dhcpv6_relay_counter(duthost, dhcp_relay['downlink_vlan_iface']['name'], type, "RX")
 
-
+@pytest.mark.parametrize("gcu_acl_test", [True, False])
 def test_dhcp_relay_default(ptfhost, dut_dhcp_relay_data, validate_dut_routes_exist, testing_config,
                             toggle_all_simulator_ports_to_rand_selected_tor_m):  # noqa F811
     """Test DHCP relay functionality on T0 topology.

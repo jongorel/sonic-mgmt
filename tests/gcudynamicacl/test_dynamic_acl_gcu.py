@@ -1,9 +1,7 @@
 import logging
 import pytest
-import os
-import json
 
-from tests.common.helpers.assertions import pytest_assert, pytest_require
+from tests.common.helpers.assertions import pytest_require
 
 from ptf.mask import Mask
 import ptf.packet as scapy
@@ -309,8 +307,9 @@ def generate_link_local_addr(mac):
     ipv6 = "fe80::{}".format(":".join(ipv6Parts))
     return ipv6
 
+# Need to check if we need this for v6 as well, otherwise remove v6 ipversion and param
 
-@pytest.fixture(params=['v4'])#, 'v6'])
+@pytest.fixture(params=['v4'])
 def packets_for_test(request, ptfadapter, duthost, config_facts, tbinfo, ip_and_intf_info):
     ip_version = request.param
     src_addr_v4, _, src_addr_v6, _, ptf_intf_index, _ = ip_and_intf_info
@@ -559,7 +558,7 @@ def dynamic_acl_create_arp_forward_rule(duthost):
 
     expect_op_success(duthost, output)
 
-    expected_rule_content =  ["DYNAMIC_ACL_TABLE", "ARP_RULE", "9997", "FORWARD", "ETHER_TYPE: 0x0806", "Active"]
+    expected_rule_content = ["DYNAMIC_ACL_TABLE", "ARP_RULE", "9997", "FORWARD", "ETHER_TYPE: 0x0806", "Active"]
 
     expect_acl_rule_match(duthost, "ARP_RULE", expected_rule_content)
 
@@ -787,7 +786,6 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut,
                                    proxy_arp_enabled):
     """Test that we can create a blanket ARP packet forwarding rule with GCU, and that ARP packets
     are correctly forwarded while all others are dropped"""
-
 
     ptf_intf_ipv4_addr, _, ptf_intf_ipv6_addr, _, ptf_intf_index, port_name = ip_and_intf_info
 

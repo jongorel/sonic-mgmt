@@ -1,6 +1,5 @@
 import ipaddress
 import pytest
-import time
 import netaddr
 import logging
 
@@ -8,17 +7,13 @@ from tests.common.fixtures.ptfhost_utils import copy_ptftests_directory   # noqa
 from tests.common.fixtures.ptfhost_utils import change_mac_addresses      # noqa F401
 from tests.common.utilities import skip_release
 from tests.ptf_runner import ptf_runner
-from tests.common import config_reload
-from tests.common.platform.processes_utils import wait_critical_processes
 from tests.common.utilities import wait_until
-from tests.common.helpers.assertions import pytest_assert
 from tests.common.dualtor.mux_simulator_control import toggle_all_simulator_ports_to_rand_selected_tor_m  # noqa F401
 
-from tests.generic_config_updater.gu_utils import apply_patch, expect_op_success, expect_op_failure
-from tests.generic_config_updater.gu_utils import generate_tmpfile, delete_tmpfile
+from tests.generic_config_updater.gu_utils import expect_op_success
 from tests.generic_config_updater.gu_utils import create_checkpoint, delete_checkpoint, rollback_or_reload
 from tests.generic_config_updater.gu_utils import format_and_apply_template, load_and_apply_json_patch
-from tests.generic_config_updater.gu_utils import expect_acl_rule_match, expect_acl_rule_removed
+from tests.generic_config_updater.gu_utils import expect_acl_rule_match
 from tests.generic_config_updater.gu_utils import expect_acl_table_match_multiple_bindings
 
 CREATE_DHCPV6_FORWARD_RULE_FILE = "create_dhcpv6_forward_rule.json"
@@ -82,13 +77,13 @@ def create_dhcp_forwarding_rule(rand_selected_dut):
 
     expect_op_success(rand_selected_dut, output)
 
-    expected_v6_rule_content =  ["DYNAMIC_ACL_TABLE",
-                              "DHCPV6_RULE", "9998",
-                              "FORWARD",
-                              "IP_PROTOCOL: 17",
-                              "L4_DST_PORT_RANGE: 547-548",
-                              "ETHER_TYPE: 0x86DD",
-                              "Active"]
+    expected_v6_rule_content = ["DYNAMIC_ACL_TABLE",
+                                "DHCPV6_RULE", "9998",
+                                "FORWARD",
+                                "IP_PROTOCOL: 17",
+                                "L4_DST_PORT_RANGE: 547-548",
+                                "ETHER_TYPE: 0x86DD",
+                                "Active"]
 
     expect_acl_rule_match(rand_selected_dut, "DHCPV6_RULE", expected_v6_rule_content)
 

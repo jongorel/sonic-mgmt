@@ -112,7 +112,7 @@ def create_drop_rule(rand_selected_dut, client_port_name):
 
 
 def set_up_acl_for_testing_via_gcu(rand_selected_dut, client_port_name):
-    """Set up our custom ACL table with DHCPv6 Forwarding and a blanket drop rule on the port
+    """Set up our custom ACL table with DHCP Forwarding and a blanket drop rule on the port
     we are sending our DHCP request from"""
 
     create_checkpoint(rand_selected_dut)
@@ -441,6 +441,9 @@ def test_dhcp_relay_default(ptfhost, dut_dhcp_relay_data, validate_dut_routes_ex
                        platform_dir="ptftests",
                        params={"hostname": duthost.hostname,
                                "client_port_index": dhcp_relay['client_iface']['port_idx'],
+                               # This port is introduced to test DHCP relay packet received
+                               # on other client port
+                               "other_client_port": repr(dhcp_relay['other_client_ports']),
                                "client_iface_alias": str(dhcp_relay['client_iface']['alias']),
                                "leaf_port_indices": repr(dhcp_relay['uplink_port_indices']),
                                "num_dhcp_servers": len(dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs']),
@@ -474,9 +477,3 @@ def test_dhcp_relay_default(ptfhost, dut_dhcp_relay_data, validate_dut_routes_ex
             restart_dhcp_service(standby_duthost)
             pytest_assert(wait_until(120, 5, 0, check_interface_status, standby_duthost))
         pytest_assert(wait_until(120, 5, 0, check_interface_status, duthost))
-
-    try:
-        logger.info("Rolled back to original checkpoint")
-        rollback_or_reload(duthost)
-    finally:
-        delete_checkpoint(duthost)

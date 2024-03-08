@@ -41,7 +41,8 @@ dhcp_patch = [
         "value": {
             "DYNAMIC_ACL_TABLE|DHCPV6_RULE": {
                 "IP_PROTOCOL": "17",
-                "DST_IPV6": "ff02::1:2/128",
+                "ETHER_TYPE": "0x86DD",
+                "L4_DST_PORT_RANGE": "547-548",
                 "PRIORITY": "9998",
                 "PACKET_ACTION": "FORWARD"
             }
@@ -55,7 +56,7 @@ custom_type_patch = [
         "path": "/ACL_TABLE_TYPE",
         "value": {
             "DYNAMIC_ACL_TABLE_TYPE" : {
-            "MATCHES": ["DST_IP","DST_IPV6","ETHER_TYPE","IN_PORTS","L4_DST_PORT","IP_PROTOCOL","IP_TYPE"],
+            "MATCHES": ["DST_IP","DST_IPV6","ETHER_TYPE","IN_PORTS","L4_DST_PORT","L4_DST_PORT_RANGE","IP_PROTOCOL","IP_TYPE"],
             "ACTIONS": ["PACKET_ACTION","COUNTER"],
             "BIND_POINTS": ["PORT"]
             }

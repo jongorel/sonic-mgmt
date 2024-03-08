@@ -309,6 +309,7 @@ def generate_link_local_addr(mac):
 
 # Need to check if we need this for v6 as well, otherwise remove v6 ipversion and param
 
+
 @pytest.fixture(params=['v4'])
 def packets_for_test(request, ptfadapter, duthost, config_facts, tbinfo, ip_and_intf_info):
     ip_version = request.param

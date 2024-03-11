@@ -143,6 +143,9 @@ def setup(rand_selected_dut, tbinfo, vlan_name):
     else:
         router_mac = rand_selected_dut.facts['router_mac']
 
+    res = rand_selected_dut.shell('cat /sys/class/net/{}/address'.format(vlan_name))
+    v4_vlan_mac = res['stdout']
+
     list_ports = mg_facts["minigraph_vlans"][vlan_name]["members"]
     switch_loopback_ip = mg_facts['minigraph_lo_interfaces'][0]['addr']
 
@@ -178,7 +181,6 @@ def setup(rand_selected_dut, tbinfo, vlan_name):
             vlan_ips["V6"] = vlan_interface_info_dict['addr']
         elif netaddr.IPAddress(str(vlan_interface_info_dict['addr'])).version == 4:
             vlan_ips["V4"] = vlan_interface_info_dict['addr']
-            v4_vlan_mac = vlan_interface_info_dict['mac']
 
     config_facts = rand_selected_dut.config_facts(host=rand_selected_dut.hostname, source="running")['ansible_facts']
 
@@ -191,6 +193,34 @@ def setup(rand_selected_dut, tbinfo, vlan_name):
         else:
             dut_mac = rand_selected_dut.shell('sonic-cfggen -d -v \'DEVICE_METADATA.localhost.mac\'')["stdout_lines"][0]
         break
+
+    # Obtain uplink port indicies for this DHCP relay agent
+    uplink_interfaces = []
+    uplink_port_indices = []
+    for iface_name, neighbor_info_dict in list(mg_facts['minigraph_neighbors'].items()):
+        if neighbor_info_dict['name'] in mg_facts['minigraph_devices']:
+            neighbor_device_info_dict = mg_facts['minigraph_devices'][neighbor_info_dict['name']]
+            if 'type' in neighbor_device_info_dict and neighbor_device_info_dict['type'] in \
+                    ['LeafRouter', 'MgmtLeafRouter']:
+                # If this uplink's physical interface is a member of a portchannel interface,
+                # we record the name of the portchannel interface here, as this is the actual
+                # interface the DHCP relay will listen on.
+                iface_is_portchannel_member = False
+                for portchannel_name, portchannel_info_dict in list(mg_facts['minigraph_portchannels'].items()):
+                    if 'members' in portchannel_info_dict and iface_name in portchannel_info_dict['members']:
+                        iface_is_portchannel_member = True
+                        if portchannel_name not in uplink_interfaces:
+                            uplink_interfaces.append(portchannel_name)
+                        break
+                # If the uplink's physical interface is not a member of a portchannel,
+                # add it to our uplink interfaces list
+                if not iface_is_portchannel_member:
+                    uplink_interfaces.append(iface_name)
+                uplink_port_indices.append(mg_facts['minigraph_ptf_indices'][iface_name])
+
+    # Obtain MAC address of an uplink interface because vlan mac may be different than that of physical interfaces
+    res = rand_selected_dut.shell('cat /sys/class/net/{}/address'.format(uplink_interfaces[0]))
+    uplink_mac = res['stdout']
 
     setup_information = {
         "blocked_src_port_name": block_src_port,
@@ -208,6 +238,7 @@ def setup(rand_selected_dut, tbinfo, vlan_name):
         "is_dualtor": is_dualtor,
         "switch_loopback_ip": switch_loopback_ip,
         "ipv4_vlan_mac": v4_vlan_mac,
+        "uplink_mac": uplink_mac,
     }
 
     return setup_information
@@ -465,7 +496,7 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
     my_chaddr = binascii.unhexlify(client_mac.replace(':', ''))
     my_chaddr += b'\x00\x00\x00\x00\x00\x00'
 
-    ether = packet.Ether(dst=BROADCAST_MAC, type=0x0800)
+    ether = packet.Ether(dst=BROADCAST_MAC, src = setup["uplink_mac"], type=0x0800)
     ip = packet.IP(src=DEFAULT_ROUTE_IP,
                     dst=BROADCAST_IP, len=328, ttl=64)
     udp = packet.UDP(sport=DHCP_SERVER_PORT,
@@ -510,7 +541,6 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
 
     masked_discover = Mask(discover_relay_pkt)
     masked_discover.set_do_not_care_scapy(packet.Ether, "dst")
-    masked_discover.set_do_not_care_scapy(packet.Ether, "src")
 
     masked_discover.set_do_not_care_scapy(packet.IP, "version")
     masked_discover.set_do_not_care_scapy(packet.IP, "ihl")

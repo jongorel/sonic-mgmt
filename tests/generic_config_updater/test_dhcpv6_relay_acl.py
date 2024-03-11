@@ -131,57 +131,6 @@ def tear_down_acl_for_testing_via_gcu(rand_selected_dut):
     delete_checkpoint(rand_selected_dut)
 
 
-def wait_all_bgp_up(duthost):
-    config_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
-    bgp_neighbors = config_facts.get('BGP_NEIGHBOR', {})
-    if not wait_until(180, 10, 0, duthost.check_bgp_session_state, list(bgp_neighbors.keys())):
-        pytest.fail("not all bgp sessions are up after config change")
-
-
-def check_dhcpv6_relay_counter(duthost, ifname, type, dir):
-    # new counter table
-    # sonic-db-cli STATE_DB hgetall 'DHCPv6_COUNTER_TABLE|Vlan1000'
-    # {'TX': "{'Unknown':'0','Solicit':'0','Advertise':'0','Request':'0','Confirm':'0','Renew':'0','Rebind':'0',
-    #  'Reply':'0', 'Release':'0','Decline':'0','Reconfigure':'0','Information-Request':'0','Relay-Forward':'0',
-    #  'Relay-Reply':'0','Malformed':'0'}", 'RX': "{'Unknown':'0','Solicit':'0','Advertise':'0','Request':'0',
-    #  'Confirm':'0','Renew':'0','Rebind':'0','Reply':'0', 'Release':'0','Decline':'0','Reconfigure':'0',
-    #  'Information-Request':'0','Relay-Forward':'0','Relay-Reply':'0','Malformed':'0'}"}
-    #
-    # old counter table
-    # sonic-db-cli STATE_DB hgetall 'DHCPv6_COUNTER_TABLE|Vlan1000'
-    # {'Unknown':'0','Solicit':'0','Advertise':'0','Request':'0','Confirm':'0','Renew':'0','Rebind':'0','Reply':'0',
-    #  'Release':'0','Decline':'0','Reconfigure':'0','Information-Request':'0','Relay-Forward':'0','Relay-Reply':'0',
-    #  'Malformed':'0'}
-    #
-    cmd_new_version = 'sonic-db-cli STATE_DB hget "DHCPv6_COUNTER_TABLE|{}" {}'.format(ifname, dir)
-    cmd_old_version = 'sonic-db-cli STATE_DB hget "DHCPv6_COUNTER_TABLE|{}" {}'.format(ifname, type)
-    output_new = duthost.shell(cmd_new_version)['stdout']
-    if len(output_new) != 0:
-        counters = eval(output_new)
-        assert int(counters[type]) > 0, "{}({}) missing {} count".format(ifname, dir, type)
-    else:
-        # old version only support vlan couting
-        if 'Vlan' not in ifname:
-            return
-        output_old = duthost.shell(cmd_old_version)['stdout']
-        assert int(output_old) > 0, "{} missing {} count".format(ifname, type)
-
-
-def init_counter(duthost, ifname, types):
-    cmd_new_version = 'sonic-db-cli STATE_DB hget "DHCPv6_COUNTER_TABLE|{}" RX'.format(ifname)
-    output_new = duthost.shell(cmd_new_version)['stdout']
-    if len(output_new) != 0:
-        counters_str = NEW_COUNTER_VALUE_FORMAT
-        cmd = 'sonic-db-cli STATE_DB hmset "DHCPv6_COUNTER_TABLE|{}" "RX" "{}"'.format(ifname, str(counters_str))
-        duthost.shell(cmd)
-        cmd = 'sonic-db-cli STATE_DB hmset "DHCPv6_COUNTER_TABLE|{}" "TX" "{}"'.format(ifname, str(counters_str))
-        duthost.shell(cmd)
-    else:
-        for type in types:
-            cmd = 'sonic-db-cli STATE_DB hmset "DHCPv6_COUNTER_TABLE|{}" {} 0'.format(ifname, type)
-            duthost.shell(cmd)
-
-
 @pytest.fixture(scope="module")
 def testing_config(duthosts, rand_one_dut_hostname, tbinfo):
     duthost = duthosts[rand_one_dut_hostname]

@@ -151,7 +151,14 @@ def setup(rand_selected_dut, tbinfo, vlan_name):
 
     # Get all vlan ports
     vlan_ports = list(mg_facts['minigraph_vlans'].values())[0]['members']
-    block_src_port = vlan_ports[0]
+
+    for port in vlan_ports:
+        if port in mg_facts['minigraph_port_name_to_alias_map']:
+            break
+        else:
+            continue
+    block_src_port = port
+
     unblocked_src_port = vlan_ports[1]
     scale_ports = vlan_ports[:]
     block_src_port_indice = mg_facts['minigraph_ptf_indices'][block_src_port]
@@ -1096,7 +1103,7 @@ def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynami
     dynamic_acl_create_dhcp_forward_rule(rand_selected_dut)
     dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
 
-    dhcp_discovery, expected_dhcp_discovery = generate_dhcp_packets(setup, ptfadapter)
+    dhcp_discovery, expected_dhcp_discovery = generate_dhcp_packets(rand_selected_dut, setup, ptfadapter)
 
     dhcpv6_solicit, expected_dhcpv6_solicit = generate_dhcpv6_packets(setup, ptfadapter)
 

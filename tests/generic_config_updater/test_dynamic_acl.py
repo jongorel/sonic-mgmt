@@ -6,9 +6,10 @@ import subprocess
 import netaddr
 
 from tests.common.helpers.assertions import pytest_require
+import scapy
 
 from ptf.mask import Mask
-import ptf.packet as scapy
+import ptf.packet as packet
 
 from scapy.all import Ether, IPv6, ICMPv6ND_NS, ICMPv6ND_NA, \
                       ICMPv6NDOptSrcLLAddr, in6_getnsmac, \
@@ -437,7 +438,7 @@ def packets_for_test(request, ptfadapter, duthost, config_facts, tbinfo, ip_and_
         exp_pkt /= ICMPv6ND_NA(tgt=tgt_addr, S=1, R=1, O=0)
         exp_pkt /= ICMPv6NDOptSrcLLAddr(type=2, lladdr=dut_mac)
         exp_pkt = Mask(exp_pkt)
-        exp_pkt.set_do_not_care_scapy(scapy.IPv6, 'fl')
+        exp_pkt.set_do_not_care_scapy(packet.IPv6, 'fl')
     return ip_version, out_pkt, exp_pkt
 
 
@@ -449,20 +450,20 @@ def generate_dhcp_packets(setup, ptfadapter):
     discover_packet = testutils.dhcp_discover_packet(
         eth_client=client_mac, set_broadcast_bit=True)
 
-    discover_packet[scapy.Ether].dst = BROADCAST_MAC
-    discover_packet[scapy.IP].sport = DHCP_CLIENT_PORT
+    discover_packet[packet.Ether].dst = BROADCAST_MAC
+    discover_packet[packet.IP].sport = DHCP_CLIENT_PORT
 
     # Create discover relayed packet
 
     my_chaddr = binascii.unhexlify(client_mac.replace(':', ''))
     my_chaddr += b'\x00\x00\x00\x00\x00\x00'
 
-    ether = scapy.Ether(dst=BROADCAST_MAC, type=0x0800)
-    ip = scapy.IP(src=DEFAULT_ROUTE_IP,
+    ether = packet.Ether(dst=BROADCAST_MAC, type=0x0800)
+    ip = packet.IP(src=DEFAULT_ROUTE_IP,
                     dst=BROADCAST_IP, len=328, ttl=64)
-    udp = scapy.UDP(sport=DHCP_SERVER_PORT,
+    udp = packet.UDP(sport=DHCP_SERVER_PORT,
                     dport=DHCP_SERVER_PORT, len=308)
-    bootp = scapy.BOOTP(op=1,
+    bootp = packet.BOOTP(op=1,
                         htype=1,
                         hlen=6,
                         hops=1,
@@ -477,35 +478,35 @@ def generate_dhcp_packets(setup, ptfadapter):
     # If our bootp layer is too small, pad it
     pad_bytes = DHCP_PKT_BOOTP_MIN_LEN - len(bootp)
     if pad_bytes > 0:
-        bootp /= scapy.PADDING('\x00' * pad_bytes)
+        bootp /= packet.PADDING('\x00' * pad_bytes)
 
     discover_relay_pkt = ether / ip / udp / bootp
 
     masked_discover = Mask(discover_relay_pkt)
-    masked_discover.set_do_not_care_scapy(scapy.Ether, "dst")
-    masked_discover.set_do_not_care_scapy(scapy.Ether, "src")
+    masked_discover.set_do_not_care_scapy(packet.Ether, "dst")
+    masked_discover.set_do_not_care_scapy(packet.Ether, "src")
 
-    masked_discover.set_do_not_care_scapy(scapy.IP, "version")
-    masked_discover.set_do_not_care_scapy(scapy.IP, "ihl")
-    masked_discover.set_do_not_care_scapy(scapy.IP, "tos")
-    masked_discover.set_do_not_care_scapy(scapy.IP, "len")
-    masked_discover.set_do_not_care_scapy(scapy.IP, "id")
-    masked_discover.set_do_not_care_scapy(scapy.IP, "flags")
-    masked_discover.set_do_not_care_scapy(scapy.IP, "frag")
-    masked_discover.set_do_not_care_scapy(scapy.IP, "ttl")
-    masked_discover.set_do_not_care_scapy(scapy.IP, "proto")
-    masked_discover.set_do_not_care_scapy(scapy.IP, "chksum")
-    masked_discover.set_do_not_care_scapy(scapy.IP, "src")
-    masked_discover.set_do_not_care_scapy(scapy.IP, "dst")
-    masked_discover.set_do_not_care_scapy(scapy.IP, "options")
+    masked_discover.set_do_not_care_scapy(packet.IP, "version")
+    masked_discover.set_do_not_care_scapy(packet.IP, "ihl")
+    masked_discover.set_do_not_care_scapy(packet.IP, "tos")
+    masked_discover.set_do_not_care_scapy(packet.IP, "len")
+    masked_discover.set_do_not_care_scapy(packet.IP, "id")
+    masked_discover.set_do_not_care_scapy(packet.IP, "flags")
+    masked_discover.set_do_not_care_scapy(packet.IP, "frag")
+    masked_discover.set_do_not_care_scapy(packet.IP, "ttl")
+    masked_discover.set_do_not_care_scapy(packet.IP, "proto")
+    masked_discover.set_do_not_care_scapy(packet.IP, "chksum")
+    masked_discover.set_do_not_care_scapy(packet.IP, "src")
+    masked_discover.set_do_not_care_scapy(packet.IP, "dst")
+    masked_discover.set_do_not_care_scapy(packet.IP, "options")
 
-    masked_discover.set_do_not_care_scapy(scapy.UDP, "chksum")
-    masked_discover.set_do_not_care_scapy(scapy.UDP, "len")
+    masked_discover.set_do_not_care_scapy(packet.UDP, "chksum")
+    masked_discover.set_do_not_care_scapy(packet.UDP, "len")
 
-    masked_discover.set_do_not_care_scapy(scapy.BOOTP, "sname")
-    masked_discover.set_do_not_care_scapy(scapy.BOOTP, "file")
-    masked_discover.set_do_not_care_scapy(scapy.BOOTP, "options")
-    masked_discover.set_do_not_care_scapy(scapy.BOOTP, "giaddr")
+    masked_discover.set_do_not_care_scapy(packet.BOOTP, "sname")
+    masked_discover.set_do_not_care_scapy(packet.BOOTP, "file")
+    masked_discover.set_do_not_care_scapy(packet.BOOTP, "options")
+    masked_discover.set_do_not_care_scapy(packet.BOOTP, "giaddr")
 
     return discover_packet, masked_discover
 
@@ -531,11 +532,11 @@ def generate_dhcpv6_packets(setup, ptfadapter):
     client_mac = ptfadapter.dataplane.get_mac(0, setup["blocked_src_port_indice"])
     client_link_local = generate_client_interace_ipv6_link_local_address(setup["blocked_src_port_indice"])
 
-    solicit_packet = scapy.Ether(
+    solicit_packet = packet.Ether(
         src=client_mac, dst=BROADCAST_MAC_V6)
     solicit_packet /= IPv6(src=client_link_local,
                             dst=BROADCAST_IP_V6)
-    solicit_packet /= scapy.UDP(sport=DHCP_CLIENT_PORT_V6,
+    solicit_packet /= packet.UDP(sport=DHCP_CLIENT_PORT_V6,
                                     dport=DHCP_SERVER_PORT_V6)
     solicit_packet /= DHCP6_Solicit(trid=12345)
     solicit_packet /= DHCP6OptClientId(
@@ -544,9 +545,9 @@ def generate_dhcpv6_packets(setup, ptfadapter):
     solicit_packet /= DHCP6OptOptReq(reqopts=[23, 24, 29])
     solicit_packet /= DHCP6OptElapsedTime(elapsedtime=0)
 
-    solicit_relay_forward_packet = scapy.Ether()
+    solicit_relay_forward_packet = packet.Ether()
     solicit_relay_forward_packet /= IPv6()
-    solicit_relay_forward_packet /= scapy.UDP(
+    solicit_relay_forward_packet /= packet.UDP(
         sport=DHCP_SERVER_PORT_V6, dport=DHCP_SERVER_PORT_V6)
     solicit_relay_forward_packet /= DHCP6_RelayForward(msgtype=12, linkaddr=setup["vlan_ips"]["V6"],
                                                         peeraddr=client_link_local)
@@ -559,18 +560,18 @@ def generate_dhcpv6_packets(setup, ptfadapter):
     solicit_relay_forward_packet /= DHCP6OptClientLinkLayerAddr()
 
     masked_packet = Mask(solicit_relay_forward_packet)
-    masked_packet.set_do_not_care_scapy(scapy.Ether, "dst")
-    masked_packet.set_do_not_care_scapy(scapy.Ether, "src")
+    masked_packet.set_do_not_care_scapy(packet.Ether, "dst")
+    masked_packet.set_do_not_care_scapy(packet.Ether, "src")
     masked_packet.set_do_not_care_scapy(IPv6, "src")
     masked_packet.set_do_not_care_scapy(IPv6, "dst")
     masked_packet.set_do_not_care_scapy(IPv6, "fl")
     masked_packet.set_do_not_care_scapy(IPv6, "tc")
     masked_packet.set_do_not_care_scapy(IPv6, "plen")
     masked_packet.set_do_not_care_scapy(IPv6, "nh")
-    masked_packet.set_do_not_care_scapy(scapy.UDP, "chksum")
-    masked_packet.set_do_not_care_scapy(scapy.UDP, "len")
+    masked_packet.set_do_not_care_scapy(packet.UDP, "chksum")
+    masked_packet.set_do_not_care_scapy(packet.UDP, "len")
     masked_packet.set_do_not_care_scapy(
-        scapy.layers.dhcp6.DHCP6_RelayForward, "linkaddr")
+        packet.layers.dhcp6.DHCP6_RelayForward, "linkaddr")
     masked_packet.set_do_not_care_scapy(
         DHCP6OptClientLinkLayerAddr, "clladdr")
 
@@ -609,12 +610,12 @@ def build_exp_pkt(input_pkt):
     if pkt_copy.haslayer('IP'):
         pkt_copy['IP'].ttl -= 1
     exp_pkt = Mask(pkt_copy)
-    exp_pkt.set_do_not_care_scapy(scapy.Ether, "dst")
-    exp_pkt.set_do_not_care_scapy(scapy.Ether, "src")
+    exp_pkt.set_do_not_care_scapy(packet.Ether, "dst")
+    exp_pkt.set_do_not_care_scapy(packet.Ether, "src")
     if input_pkt.haslayer('IP'):
-        exp_pkt.set_do_not_care_scapy(scapy.IP, "chksum")
+        exp_pkt.set_do_not_care_scapy(packet.IP, "chksum")
     else:
-        exp_pkt.set_do_not_care_scapy(scapy.IPv6, "hlim")
+        exp_pkt.set_do_not_care_scapy(packet.IPv6, "hlim")
 
     return exp_pkt
 

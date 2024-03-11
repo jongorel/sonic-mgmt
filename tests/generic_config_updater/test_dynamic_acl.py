@@ -548,6 +548,7 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
 
     masked_discover = Mask(discover_relay_pkt)
     masked_discover.set_do_not_care_scapy(packet.Ether, "dst")
+    masked_discover.set_do_not_care_scapy(packet.Ether, "src")
 
     masked_discover.set_do_not_care_scapy(packet.IP, "version")
     masked_discover.set_do_not_care_scapy(packet.IP, "ihl")
@@ -568,6 +569,10 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
 
     masked_discover.set_do_not_care_scapy(packet.BOOTP, "sname")
     masked_discover.set_do_not_care_scapy(packet.BOOTP, "file")
+    masked_discover.set_do_not_care_scapy(packet.BOOTP, "chaddr")
+    masked_discover.set_do_not_care_scapy(packet.BOOTP, "giaddr")
+
+    masked_discover.set_do_not_care_scapy(packet.DHCP, "options")
 
     return discover_packet, masked_discover
 
@@ -589,7 +594,7 @@ def generate_dhcpv6_packets(setup, ptfadapter):
     solicit_packet /= DHCP6OptOptReq(reqopts=[23, 24, 29])
     solicit_packet /= DHCP6OptElapsedTime(elapsedtime=0)
 
-    solicit_relay_forward_packet = packet.Ether()
+    solicit_relay_forward_packet = packet.Ether(src=setup["uplink_mac"])
     solicit_relay_forward_packet /= IPv6()
     solicit_relay_forward_packet /= packet.UDP(
         sport=DHCP_SERVER_PORT_V6, dport=DHCP_SERVER_PORT_V6)

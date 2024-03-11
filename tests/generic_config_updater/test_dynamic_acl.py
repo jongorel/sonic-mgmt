@@ -4,6 +4,7 @@ import ipaddress
 import binascii
 import subprocess
 import netaddr
+import struct
 
 from tests.common.helpers.assertions import pytest_require
 import scapy
@@ -46,7 +47,7 @@ CREATE_INITIAL_DROP_RULE_TEMPLATE = "create_initial_drop_rule.j2"
 CREATE_SECONDARY_DROP_RULE_TEMPLATE = "create_secondary_drop_rule.j2"
 CREATE_THREE_DROP_RULES_TEMPLATE = "create_three_drop_rules.j2"
 CREATE_ARP_FORWARD_RULE_FILE = "create_arp_forward_rule.json"
-CREATE_DHCP_FORWARD_RULE_FILE = "create_dhcp_forwrad_rule_both.json"
+CREATE_DHCP_FORWARD_RULE_FILE = "create_dhcp_forward_rule_both.json"
 REPLACE_RULES_TEMPLATE = "replace_rules.j2"
 REPLACE_NONEXISTENT_RULE_FILE = "replace_nonexistent_rule.json"
 REMOVE_RULE_TEMPLATE = "remove_rule.j2"
@@ -143,6 +144,7 @@ def setup(rand_selected_dut, tbinfo, vlan_name):
         router_mac = rand_selected_dut.facts['router_mac']
 
     list_ports = mg_facts["minigraph_vlans"][vlan_name]["members"]
+    switch_loopback_ip = mg_facts['minigraph_lo_interfaces'][0]['addr']
 
     # Get all vlan ports
     vlan_ports = list(mg_facts['minigraph_vlans'].values())[0]['members']
@@ -150,6 +152,7 @@ def setup(rand_selected_dut, tbinfo, vlan_name):
     unblocked_src_port = vlan_ports[1]
     scale_ports = vlan_ports[:]
     block_src_port_indice = mg_facts['minigraph_ptf_indices'][block_src_port]
+    block_src_port_alias = mg_facts['minigraph_port_name_to_alias_map'][block_src_port]
     unblocked_src_port_indice = mg_facts['minigraph_ptf_indices'][unblocked_src_port]
     scale_ports_indices = [mg_facts['minigraph_ptf_indices'][port_name] for port_name in scale_ports]
     # Put all portchannel members into dst_ports
@@ -175,6 +178,7 @@ def setup(rand_selected_dut, tbinfo, vlan_name):
             vlan_ips["V6"] = vlan_interface_info_dict['addr']
         elif netaddr.IPAddress(str(vlan_interface_info_dict['addr'])).version == 4:
             vlan_ips["V4"] = vlan_interface_info_dict['addr']
+            v4_vlan_mac = vlan_interface_info_dict['mac']
 
     config_facts = rand_selected_dut.config_facts(host=rand_selected_dut.hostname, source="running")['ansible_facts']
 
@@ -191,6 +195,7 @@ def setup(rand_selected_dut, tbinfo, vlan_name):
     setup_information = {
         "blocked_src_port_name": block_src_port,
         "blocked_src_port_indice": block_src_port_indice,
+        "blocked_src_port_alias": block_src_port_alias,
         "unblocked_src_port_indice": unblocked_src_port_indice,
         "scale_port_names": scale_ports,
         "scale_port_indices": scale_ports_indices,
@@ -201,6 +206,8 @@ def setup(rand_selected_dut, tbinfo, vlan_name):
         "dut_mac": dut_mac,
         "vlan_ips": vlan_ips,
         "is_dualtor": is_dualtor,
+        "switch_loopback_ip": switch_loopback_ip,
+        "ipv4_vlan_mac": v4_vlan_mac,
     }
 
     return setup_information
@@ -390,7 +397,7 @@ def generate_link_local_addr(mac):
 
 
 @pytest.fixture(params=['v4'])
-def packets_for_test(request, ptfadapter, duthost, config_facts, tbinfo, ip_and_intf_info):
+def arp_packets_for_test(request, ptfadapter, duthost, config_facts, tbinfo, ip_and_intf_info):
     ip_version = request.param
     src_addr_v4, _, src_addr_v6, _, ptf_intf_index, _ = ip_and_intf_info
     ptf_intf_mac = ptfadapter.dataplane.get_mac(0, ptf_intf_index)
@@ -442,10 +449,10 @@ def packets_for_test(request, ptfadapter, duthost, config_facts, tbinfo, ip_and_
     return ip_version, out_pkt, exp_pkt
 
 
-def generate_dhcp_packets(setup, ptfadapter):
+def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
     # Create discover packet
 
-    client_mac = ptfadapter.dataplane.get_mac(0, setup["blocked_src_port_indice"])
+    client_mac = ptfadapter.dataplane.get_mac(0, setup["blocked_src_port_indice"]).decode()
 
     discover_packet = testutils.dhcp_discover_packet(
         eth_client=client_mac, set_broadcast_bit=True)
@@ -473,7 +480,26 @@ def generate_dhcp_packets(setup, ptfadapter):
                         ciaddr=DEFAULT_ROUTE_IP,
                         yiaddr=DEFAULT_ROUTE_IP,
                         siaddr=DEFAULT_ROUTE_IP,
+                        giaddr=setup["vlan_ips"]["V4"] if not setup["is_dualtor"] else setup["switch_loopback_ip"],
                         chaddr=my_chaddr)
+
+    circuit_id_string = rand_selected_dut.hostname + ":" + setup["blocked_src_port_alias"]
+    option82 = struct.pack('BB', 1, len(circuit_id_string))
+    option82 += circuit_id_string.encode('utf-8')
+
+    remote_id_string = setup["ipv4_vlan_mac"]
+    option82 += struct.pack('BB', 2, len(remote_id_string))
+    option82 += remote_id_string.encode('utf-8')
+
+    if setup["is_dualtor"]:
+        link_selection = bytes(
+            list(map(int, setup["vlan_ips"]["V4"].split('.'))))
+        option82 += struct.pack('BB', 5, 4)
+        option82 += link_selection
+
+    bootp /= packet.DHCP(options=[('message-type', 'discover'),
+                                     (82, option82),
+                                     ('end')])
 
     # If our bootp layer is too small, pad it
     pad_bytes = DHCP_PKT_BOOTP_MIN_LEN - len(bootp)
@@ -505,32 +531,13 @@ def generate_dhcp_packets(setup, ptfadapter):
 
     masked_discover.set_do_not_care_scapy(packet.BOOTP, "sname")
     masked_discover.set_do_not_care_scapy(packet.BOOTP, "file")
-    masked_discover.set_do_not_care_scapy(packet.BOOTP, "options")
-    masked_discover.set_do_not_care_scapy(packet.BOOTP, "giaddr")
 
     return discover_packet, masked_discover
 
-def generate_client_interace_ipv6_link_local_address(client_port_index):
-        # Shutdown and startup the client interface to generate a proper IPv6 link-local address
-        command = "ifconfig eth{} down".format(client_port_index)
-        proc = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE)
-        proc.communicate()
-
-        command = "ifconfig eth{} up".format(client_port_index)
-        proc = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE)
-        proc.communicate()
-
-        command = "ip addr show eth{} | grep inet6 | grep 'scope link' | awk '{{print $2}}' | cut -d '/' -f1".\
-                  format(client_port_index)
-        proc = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE)
-        stdout, stderr = proc.communicate()
-
-        return stdout.strip()
-
 def generate_dhcpv6_packets(setup, ptfadapter):
 
-    client_mac = ptfadapter.dataplane.get_mac(0, setup["blocked_src_port_indice"])
-    client_link_local = generate_client_interace_ipv6_link_local_address(setup["blocked_src_port_indice"])
+    client_mac = ptfadapter.dataplane.get_mac(0, setup["blocked_src_port_indice"]).decode()
+    client_link_local = generate_link_local_addr(client_mac)
 
     solicit_packet = packet.Ether(
         src=client_mac, dst=BROADCAST_MAC_V6)
@@ -571,9 +578,11 @@ def generate_dhcpv6_packets(setup, ptfadapter):
     masked_packet.set_do_not_care_scapy(packet.UDP, "chksum")
     masked_packet.set_do_not_care_scapy(packet.UDP, "len")
     masked_packet.set_do_not_care_scapy(
-        packet.layers.dhcp6.DHCP6_RelayForward, "linkaddr")
+        scapy.layers.dhcp6.DHCP6_RelayForward, "linkaddr")
     masked_packet.set_do_not_care_scapy(
         DHCP6OptClientLinkLayerAddr, "clladdr")
+
+    return solicit_packet, masked_packet
 
 
 def verify_expected_packet_behavior(exp_pkt, ptfadapter, setup, expect_drop):

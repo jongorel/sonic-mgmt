@@ -507,7 +507,10 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
 
     # Create discover relayed packet
 
-    ether = packet.Ether(dst=BROADCAST_MAC, src = setup["uplink_mac"], type=0x0800)
+    src_mac = setup["uplink_mac"]
+    my_giaddr = setup["vlan_ips"]["V4"] if not setup["is_dualtor"] else setup["switch_loopback_ip"]
+
+    ether = packet.Ether(dst=BROADCAST_MAC, src = src_mac, type=0x0800)
     ip = packet.IP(src=DEFAULT_ROUTE_IP,
                     dst=BROADCAST_IP, len=328, ttl=64)
     udp = packet.UDP(sport=DHCP_SERVER_PORT,
@@ -522,7 +525,7 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
                         ciaddr=DEFAULT_ROUTE_IP,
                         yiaddr=DEFAULT_ROUTE_IP,
                         siaddr=DEFAULT_ROUTE_IP,
-                        giaddr=setup["vlan_ips"]["V4"] if not setup["is_dualtor"] else setup["switch_loopback_ip"],
+                        giaddr=my_giaddr,
                         chaddr=my_chaddr)
 
     circuit_id_string = rand_selected_dut.hostname + ":" + setup["blocked_src_port_alias"]
@@ -550,9 +553,10 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
 
     discover_relay_pkt = ether / ip / udp / bootp
 
+    print(1/0)
+
     masked_discover = Mask(discover_relay_pkt)
     masked_discover.set_do_not_care_scapy(packet.Ether, "dst")
-    masked_discover.set_do_not_care_scapy(packet.Ether, "src")
 
     masked_discover.set_do_not_care_scapy(packet.IP, "version")
     masked_discover.set_do_not_care_scapy(packet.IP, "ihl")
@@ -573,10 +577,6 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
 
     masked_discover.set_do_not_care_scapy(packet.BOOTP, "sname")
     masked_discover.set_do_not_care_scapy(packet.BOOTP, "file")
-    masked_discover.set_do_not_care_scapy(packet.BOOTP, "chaddr")
-    masked_discover.set_do_not_care_scapy(packet.BOOTP, "giaddr")
-
-    masked_discover.set_do_not_care_scapy(packet.DHCP, "options")
 
     return discover_packet, masked_discover
 

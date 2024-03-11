@@ -492,7 +492,8 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
 
     client_mac = ptfadapter.dataplane.get_mac(0, setup["blocked_src_port_indice"]).decode()
 
-    rand_selected_dut.shell("echo \"{}\" > client_mac.txt")
+    my_chaddr = binascii.unhexlify(client_mac.replace(':', ''))
+    my_chaddr += b'\x00\x00\x00\x00\x00\x00'
 
     discover_packet = testutils.dhcp_discover_packet(
         eth_client=client_mac, set_broadcast_bit=True)
@@ -500,10 +501,11 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
     discover_packet[packet.Ether].dst = BROADCAST_MAC
     discover_packet[packet.IP].sport = DHCP_CLIENT_PORT
 
-    # Create discover relayed packet
+    # testutils.dhcp_discover_packet is bugged and forms chaddr wrong.  We need to overwrite it.
 
-    my_chaddr = binascii.unhexlify(client_mac.replace(':', ''))
-    my_chaddr += b'\x00\x00\x00\x00\x00\x00'
+    discover_packet[packet.BOOTP].chaddr = my_chaddr
+
+    # Create discover relayed packet
 
     ether = packet.Ether(dst=BROADCAST_MAC, src = setup["uplink_mac"], type=0x0800)
     ip = packet.IP(src=DEFAULT_ROUTE_IP,

@@ -492,6 +492,8 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
 
     client_mac = ptfadapter.dataplane.get_mac(0, setup["blocked_src_port_indice"]).decode()
 
+    rand_selected_dut.shell("echo \"{}\" > client_mac.txt")
+
     discover_packet = testutils.dhcp_discover_packet(
         eth_client=client_mac, set_broadcast_bit=True)
 

@@ -508,50 +508,13 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
     # Create discover relayed packet
 
     src_mac = setup["uplink_mac"]
-    my_giaddr = setup["vlan_ips"]["V4"] if not setup["is_dualtor"] else setup["switch_loopback_ip"]
 
     ether = packet.Ether(dst=BROADCAST_MAC, src=src_mac, type=0x0800)
     ip = packet.IP(src=DEFAULT_ROUTE_IP,
                     dst=BROADCAST_IP, len=328, ttl=64)
     udp = packet.UDP(sport=DHCP_SERVER_PORT,
                     dport=DHCP_SERVER_PORT, len=308)
-    bootp = packet.BOOTP(op=1,
-                        htype=1,
-                        hlen=6,
-                        hops=1,
-                        xid=0,
-                        secs=0,
-                        flags=0x8000,
-                        ciaddr=DEFAULT_ROUTE_IP,
-                        yiaddr=DEFAULT_ROUTE_IP,
-                        siaddr=DEFAULT_ROUTE_IP,
-                        giaddr=my_giaddr,
-                        chaddr=my_chaddr)
-
-    circuit_id_string = rand_selected_dut.hostname + ":" + setup["blocked_src_port_alias"]
-    option82 = struct.pack('BB', 1, len(circuit_id_string))
-    option82 += circuit_id_string.encode('utf-8')
-
-    remote_id_string = setup["ipv4_vlan_mac"]
-    option82 += struct.pack('BB', 2, len(remote_id_string))
-    option82 += remote_id_string.encode('utf-8')
-
-    if setup["is_dualtor"]:
-        link_selection = bytes(
-            list(map(int, setup["vlan_ips"]["V4"].split('.'))))
-        option82 += struct.pack('BB', 5, 4)
-        option82 += link_selection
-
-    bootp /= packet.DHCP(options=[('message-type', 'discover'),
-                                     (82, option82),
-                                     ('end')])
-
-    # If our bootp layer is too small, pad it
-    pad_bytes = DHCP_PKT_BOOTP_MIN_LEN - len(bootp)
-    if pad_bytes > 0:
-        bootp /= packet.PADDING('\x00' * pad_bytes)
-
-    discover_relay_pkt = ether / ip / udp / bootp
+    discover_relay_pkt = ether / ip / udp
 
     masked_discover = Mask(discover_relay_pkt)
     masked_discover.set_do_not_care_scapy(packet.Ether, "dst")
@@ -575,8 +538,9 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
     masked_discover.set_do_not_care_scapy(packet.UDP, "chksum")
     masked_discover.set_do_not_care_scapy(packet.UDP, "len")
 
-    masked_discover.set_do_not_care_scapy(packet.BOOTP, "sname")
-    masked_discover.set_do_not_care_scapy(packet.BOOTP, "file")
+    payload_offset = len(discover_packet) - len(discover_relay_pkt)
+
+    masked_discover.set_do_nor_care_scapy(payload_offset*8,len(discover_relay_pkt)*8)
 
     return discover_packet, masked_discover
 
@@ -597,6 +561,8 @@ def generate_dhcpv6_packets(setup, ptfadapter):
     solicit_packet /= DHCP6OptIA_NA()
     solicit_packet /= DHCP6OptOptReq(reqopts=[23, 24, 29])
     solicit_packet /= DHCP6OptElapsedTime(elapsedtime=0)
+
+
 
     solicit_relay_forward_packet = packet.Ether(src=setup["uplink_mac"])
     solicit_relay_forward_packet /= IPv6()

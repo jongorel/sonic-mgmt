@@ -529,9 +529,9 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
         option82 += struct.pack('BB', 5, 4)
         option82 += link_selection
 
-    discover_relay_pkt[packet.DHCP].options = packet.DHCP(options=[('message-type', 'discover'),
+    discover_relay_pkt[packet.DHCP].options = [('message-type', 'discover'),
                                      (82, option82),
-                                     ('end')])
+                                     ('end')]
 
     masked_discover = Mask(discover_relay_pkt)
     masked_discover.set_do_not_care_scapy(packet.Ether, "dst")

@@ -510,7 +510,7 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
     src_mac = setup["uplink_mac"]
     my_giaddr = setup["vlan_ips"]["V4"] if not setup["is_dualtor"] else setup["switch_loopback_ip"]
 
-    ether = packet.Ether(dst=BROADCAST_MAC, src = src_mac, type=0x0800)
+    ether = packet.Ether(dst=BROADCAST_MAC, src=src_mac, type=0x0800)
     ip = packet.IP(src=DEFAULT_ROUTE_IP,
                     dst=BROADCAST_IP, len=328, ttl=64)
     udp = packet.UDP(sport=DHCP_SERVER_PORT,
@@ -553,10 +553,10 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
 
     discover_relay_pkt = ether / ip / udp / bootp
 
-    print(1/0)
-
     masked_discover = Mask(discover_relay_pkt)
     masked_discover.set_do_not_care_scapy(packet.Ether, "dst")
+    masked_discover.set_do_not_care_scapy(packet.Ether, "src")
+    masked_discover.set_do_not_care_scapy(packet.Ether, "type")
 
     masked_discover.set_do_not_care_scapy(packet.IP, "version")
     masked_discover.set_do_not_care_scapy(packet.IP, "ihl")

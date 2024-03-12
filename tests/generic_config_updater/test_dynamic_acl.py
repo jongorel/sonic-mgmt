@@ -533,10 +533,6 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
                                      (82, option82),
                                      ('end')])
 
-    pad_bytes = DHCP_PKT_BOOTP_MIN_LEN - len(discover_relay_pkt[packet.BOOTP])
-    if pad_bytes > 0:
-        discover_relay_pkt[packet.BOOTP] /= packet.PADDING('\x00' * pad_bytes)
-
     masked_discover = Mask(discover_relay_pkt)
     masked_discover.set_do_not_care_scapy(packet.Ether, "dst")
     masked_discover.set_do_not_care_scapy(packet.Ether, "src")

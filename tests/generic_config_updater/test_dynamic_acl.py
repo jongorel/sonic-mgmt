@@ -507,16 +507,23 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
 
     # Create discover relayed packet
 
-    src_mac = setup["uplink_mac"]
-
-    discover_relay_pkt = discover_packet.copy()
-
-    discover_relay_pkt[packet.UDP].sport = 67
-    discover_relay_pkt[packet.UDP].len = 308
-    discover_relay_pkt[packet.BOOTP].hops += 1
-
-    discover_relay_pkt[packet.BOOTP].giaddr = setup["vlan_ips"]["V4"]
-
+    ether = packet.Ether(dst=BROADCAST_MAC, src = setup["uplink_mac"], type=0x0800)
+    ip = packet.IP(src=DEFAULT_ROUTE_IP,
+                    dst=BROADCAST_IP, len=328, ttl=64)
+    udp = packet.UDP(sport=DHCP_SERVER_PORT,
+                    dport=DHCP_SERVER_PORT, len=308)
+    bootp = packet.BOOTP(op=1,
+                        htype=1,
+                        hlen=6,
+                        hops=1,
+                        xid=0,
+                        secs=0,
+                        flags=0x8000,
+                        ciaddr=DEFAULT_ROUTE_IP,
+                        yiaddr=DEFAULT_ROUTE_IP,
+                        siaddr=DEFAULT_ROUTE_IP,
+                        giaddr=setup["vlan_ips"]["V4"] if not setup["is_dualtor"] else setup["switch_loopback_ip"],
+                        chaddr=my_chaddr)
     circuit_id_string = rand_selected_dut.hostname + ":" + setup["blocked_src_port_alias"]
     option82 = struct.pack('BB', 1, len(circuit_id_string))
     option82 += circuit_id_string.encode('utf-8')
@@ -528,16 +535,18 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
             list(map(int, setup["vlan_ips"]["V4"].split('.'))))
         option82 += struct.pack('BB', 5, 4)
         option82 += link_selection
-
-    discover_relay_pkt[packet.DHCP].options = [('message-type', 'discover'),
+    bootp /= packet.DHCP(options=[('message-type', 'discover'),
                                      (82, option82),
-                                     ('end')]
+                                     ('end')])
+    # If our bootp layer is too small, pad it
+    pad_bytes = DHCP_PKT_BOOTP_MIN_LEN - len(bootp)
+    if pad_bytes > 0:
+        bootp /= packet.PADDING('\x00' * pad_bytes)
 
+    discover_relay_pkt = ether / ip / udp / bootp
     masked_discover = Mask(discover_relay_pkt)
     masked_discover.set_do_not_care_scapy(packet.Ether, "dst")
     masked_discover.set_do_not_care_scapy(packet.Ether, "src")
-    masked_discover.set_do_not_care_scapy(packet.Ether, "type")
-
     masked_discover.set_do_not_care_scapy(packet.IP, "version")
     masked_discover.set_do_not_care_scapy(packet.IP, "ihl")
     masked_discover.set_do_not_care_scapy(packet.IP, "tos")
@@ -551,15 +560,16 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
     masked_discover.set_do_not_care_scapy(packet.IP, "src")
     masked_discover.set_do_not_care_scapy(packet.IP, "dst")
     masked_discover.set_do_not_care_scapy(packet.IP, "options")
-
     masked_discover.set_do_not_care_scapy(packet.UDP, "chksum")
     masked_discover.set_do_not_care_scapy(packet.UDP, "len")
-
     masked_discover.set_do_not_care_scapy(packet.BOOTP, "sname")
     masked_discover.set_do_not_care_scapy(packet.BOOTP, "file")
-
+    masked_discover.set_do_not_care_scapy(packet.BOOTP, "chaddr")
+    masked_discover.set_do_not_care_scapy(packet.BOOTP, "giaddr")
+    masked_discover.set_do_not_care_scapy(packet.DHCP, "options")
 
     return discover_packet, masked_discover
+
 
 def generate_dhcpv6_packets(setup, ptfadapter):
 
@@ -1082,7 +1092,7 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut,
         pytest_require(ptf_intf_ipv6_addr is not None, 'No IPv6 VLAN address configured on device')
 
     ptfadapter.dataplane.flush()
-    testutils.send_packet(ptfadapter, ptf_intf_index, outgoing_packet)
+    testutils.send(ptfadapter, ptf_intf_index, outgoing_packet)
     testutils.verify_packet(ptfadapter, expected_packet, ptf_intf_index, timeout=10)
 
     dynamic_acl_verify_packets(setup,
@@ -1101,12 +1111,12 @@ def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynami
 
     ptfadapter.dataplane.flush()
 
-    testutils.send_packet(ptfadapter, setup["blocked_src_port_indice"], dhcp_discovery)
+    testutils.send(ptfadapter, setup["blocked_src_port_indice"], dhcp_discovery)
     verify_expected_packet_behavior(expected_dhcp_discovery, ptfadapter, setup, expect_drop = False)
 
     ptfadapter.dataplane.flush()
 
-    testutils.send_packet(ptfadapter, setup["blocked_src_port_indice"], dhcpv6_solicit)
+    testutils.send(ptfadapter, setup["blocked_src_port_indice"], dhcpv6_solicit)
     verify_expected_packet_behavior(expected_dhcpv6_solicit, ptfadapter, setup, expect_drop=False)
 
     dynamic_acl_verify_packets(setup,

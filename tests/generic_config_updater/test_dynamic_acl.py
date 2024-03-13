@@ -313,12 +313,14 @@ def proxy_arp_enabled(rand_selected_dut, config_facts):
 
 @pytest.fixture(scope="module")
 def config_facts(duthosts, enum_rand_one_per_hwsku_frontend_hostname):
+    """Get config facts for the duthost"""
     duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
     return duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
 
 
 @pytest.fixture(scope="module")
 def intfs_for_test(duthosts, enum_rand_one_per_hwsku_frontend_hostname, enum_frontend_asic_index, tbinfo, config_facts):
+    """Get the interfaces that will be used in our ARP test"""
     duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
     asic = duthost.asic_instance(enum_frontend_asic_index)
     mg_facts = asic.get_extended_minigraph_facts(tbinfo)
@@ -417,6 +419,7 @@ def ip_and_intf_info(config_facts, intfs_for_test, ptfhost, ptfadapter):
 
 
 def generate_link_local_addr(mac):
+    """Generate ipv6 link local"""
     parts = mac.split(":")
     parts.insert(3, "ff")
     parts.insert(4, "fe")
@@ -428,7 +431,7 @@ def generate_link_local_addr(mac):
     ipv6 = "fe80::{}".format(":".join(ipv6Parts))
     return ipv6
 
-# Need to check if we need this for v6 as well, otherwise remove v6 ipversion and param
+# If/When NDP on ARPv6 becomes necessary and possible, will need to re-add in IPV6 parameterization option to this
 
 
 @pytest.fixture(params=['v4'])
@@ -485,6 +488,7 @@ def arp_packets_for_test(request, ptfadapter, duthost, config_facts, tbinfo, ip_
 
 
 def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
+    """Generate a DHCP Discovery packet, as well as the expected relay packet"""
     # Create discover packet
 
     client_mac = ptfadapter.dataplane.get_mac(0, setup["blocked_src_port_indice"]).decode()
@@ -1117,7 +1121,8 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut,
 
 
 def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
-    """Verify that a dhcp rule can be created"""
+    """Verify that DHCP and DHCPv6 forwarding rules can be created, and that dhcp packets are properyl forwarded
+    whereas others are dropped"""
 
     dynamic_acl_create_dhcp_forward_rule(rand_selected_dut)
     dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)

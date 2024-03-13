@@ -1105,7 +1105,7 @@ def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynami
     dynamic_acl_create_dhcp_forward_rule(rand_selected_dut)
     dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
 
-    def new_update_payload(self, pkt):
+    def new_update_payload(pkt):
         return pkt
 
     try:

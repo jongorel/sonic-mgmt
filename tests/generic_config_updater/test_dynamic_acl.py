@@ -132,7 +132,9 @@ class DHCP6OptClientLinkLayerAddr(_DHCP6OptGuessPayload):  # RFC6939
 # GCU Fixtures
 
 @pytest.fixture(scope="module")
-def setup(rand_selected_dut, tbinfo, vlan_name):
+def setup(rand_selected_dut, tbinfo, vlan_name, ptfadapter):
+    """Setup various variables neede for different tests"""
+
     mg_facts = rand_selected_dut.get_extended_minigraph_facts(tbinfo)
     is_dualtor = False
     if "dualtor" in tbinfo["topo"]["name"]:
@@ -228,6 +230,17 @@ def setup(rand_selected_dut, tbinfo, vlan_name):
     # Obtain MAC address of an uplink interface because vlan mac may be different than that of physical interfaces
     res = rand_selected_dut.shell('cat /sys/class/net/{}/address'.format(uplink_interfaces[0]))
     uplink_mac = res['stdout']
+
+    """ update_payload method which is automatically called in ptfadapter on .send() or any .verify_packet() method
+        is bugged for dhcp_discover packets.  Need to override it to do nothing."""
+
+    def new_update_payload(pkt):
+        return pkt
+
+    try:
+        ptfadapter.update_payload = new_update_payload
+    except:
+        setattr(ptfadapter, "update_payload", new_update_payload)
 
     setup_information = {
         "blocked_src_port_name": block_src_port,
@@ -544,9 +557,13 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
         bootp /= packet.PADDING('\x00' * pad_bytes)
 
     discover_relay_pkt = ether / ip / udp / bootp
+
+    # Mask off fields we don't care to match
+
     masked_discover = Mask(discover_relay_pkt)
+
     masked_discover.set_do_not_care_scapy(packet.Ether, "dst")
-    masked_discover.set_do_not_care_scapy(packet.Ether, "src")
+
     masked_discover.set_do_not_care_scapy(packet.IP, "version")
     masked_discover.set_do_not_care_scapy(packet.IP, "ihl")
     masked_discover.set_do_not_care_scapy(packet.IP, "tos")
@@ -560,13 +577,12 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
     masked_discover.set_do_not_care_scapy(packet.IP, "src")
     masked_discover.set_do_not_care_scapy(packet.IP, "dst")
     masked_discover.set_do_not_care_scapy(packet.IP, "options")
+
     masked_discover.set_do_not_care_scapy(packet.UDP, "chksum")
     masked_discover.set_do_not_care_scapy(packet.UDP, "len")
+
     masked_discover.set_do_not_care_scapy(packet.BOOTP, "sname")
     masked_discover.set_do_not_care_scapy(packet.BOOTP, "file")
-    masked_discover.set_do_not_care_scapy(packet.BOOTP, "chaddr")
-    masked_discover.set_do_not_care_scapy(packet.BOOTP, "giaddr")
-    masked_discover.set_do_not_care_scapy(packet.DHCP, "options")
 
     return discover_packet, masked_discover
 
@@ -623,6 +639,22 @@ def generate_dhcpv6_packets(setup, ptfadapter):
 
     return solicit_packet, masked_packet
 
+def dynamic_acl_send_and_verify_dhcp_packets(rand_selected_dut, setup, ptfadapter):
+    """Send and verify proper relay of dhcp and dhcpv6 packets"""
+
+    dhcp_discovery, expected_dhcp_discovery = generate_dhcp_packets(rand_selected_dut, setup, ptfadapter)
+
+    dhcpv6_solicit, expected_dhcpv6_solicit = generate_dhcpv6_packets(setup, ptfadapter)
+
+    ptfadapter.dataplane.flush()
+
+    testutils.send(ptfadapter, setup["blocked_src_port_indice"], dhcp_discovery)
+    verify_expected_packet_behavior(expected_dhcp_discovery, ptfadapter, setup, expect_drop = False)
+
+    ptfadapter.dataplane.flush()
+
+    testutils.send(ptfadapter, setup["blocked_src_port_indice"], dhcpv6_solicit)
+    verify_expected_packet_behavior(expected_dhcpv6_solicit, ptfadapter, setup, expect_drop=False)
 
 def verify_expected_packet_behavior(exp_pkt, ptfadapter, setup, expect_drop):
     """Verify that a packet was either dropped or forwarded"""
@@ -1101,31 +1133,12 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut,
                                packets_dropped=True)
 
 def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
+    """Verify that a dhcp rule can be created"""
 
     dynamic_acl_create_dhcp_forward_rule(rand_selected_dut)
     dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
 
-    def new_update_payload(pkt):
-        return pkt
-
-    try:
-        ptfadapter.update_payload = new_update_payload
-    except:
-        setattr(ptfadapter, "update_payload", new_update_payload)
-
-    dhcp_discovery, expected_dhcp_discovery = generate_dhcp_packets(rand_selected_dut, setup, ptfadapter)
-
-    dhcpv6_solicit, expected_dhcpv6_solicit = generate_dhcpv6_packets(setup, ptfadapter)
-
-    ptfadapter.dataplane.flush()
-
-    testutils.send(ptfadapter, setup["blocked_src_port_indice"], dhcp_discovery)
-    verify_expected_packet_behavior(expected_dhcp_discovery, ptfadapter, setup, expect_drop = False)
-
-    ptfadapter.dataplane.flush()
-
-    testutils.send(ptfadapter, setup["blocked_src_port_indice"], dhcpv6_solicit)
-    verify_expected_packet_behavior(expected_dhcpv6_solicit, ptfadapter, setup, expect_drop=False)
+    dynamic_acl_send_and_verify_dhcp_packets(rand_selected_dut, setup, ptfadapter)
 
     dynamic_acl_verify_packets(setup,
                                ptfadapter,

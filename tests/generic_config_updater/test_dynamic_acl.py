@@ -5,6 +5,8 @@ import netaddr
 import struct
 
 from tests.common.helpers.assertions import pytest_require
+from tests.common.utilities import get_upstream_neigh_type, get_downstream_neigh_type
+
 import scapy
 
 from ptf.mask import Mask
@@ -31,9 +33,10 @@ from tests.generic_config_updater.gu_utils import create_checkpoint, delete_chec
 from tests.generic_config_updater.gu_utils import format_and_apply_template, load_and_apply_json_patch
 from tests.generic_config_updater.gu_utils import expect_acl_rule_match, expect_acl_rule_removed
 from tests.generic_config_updater.gu_utils import expect_acl_table_match_multiple_bindings
+from tests.common.dualtor.mux_simulator_control import toggle_all_simulator_ports_to_rand_selected_tor  # noqa F401
 
 pytestmark = [
-    pytest.mark.topology('t0'),
+    pytest.mark.topology('t0', 'm0'),
 ]
 
 logger = logging.getLogger(__name__)
@@ -119,7 +122,7 @@ class DHCP6OptClientLinkLayerAddr(_DHCP6OptGuessPayload):  # RFC6939
 
 
 @pytest.fixture(scope="module")
-def setup(rand_selected_dut, tbinfo, vlan_name, ptfadapter):
+def setup(rand_selected_dut, rand_unselected_dut, tbinfo, vlan_name, ptfadapter, topo_scenario, ptfhost):
     """Setup various variables neede for different tests"""
 
     mg_facts = rand_selected_dut.get_extended_minigraph_facts(tbinfo)
@@ -131,6 +134,8 @@ def setup(rand_selected_dut, tbinfo, vlan_name, ptfadapter):
         is_dualtor = True
     else:
         router_mac = rand_selected_dut.facts['router_mac']
+
+    topo = tbinfo["topo"]["type"]
 
     res = rand_selected_dut.shell('cat /sys/class/net/{}/address'.format(vlan_name))
     v4_vlan_mac = res['stdout']
@@ -156,9 +161,25 @@ def setup(rand_selected_dut, tbinfo, vlan_name, ptfadapter):
     scale_ports_indices = [mg_facts['minigraph_ptf_indices'][port_name] for port_name in scale_ports]
     # Put all portchannel members into dst_ports
     dst_port_indices = []
+    dst_port_names = []
     for _, v in mg_facts['minigraph_portchannels'].items():
         for member in v['members']:
             dst_port_indices.append(mg_facts['minigraph_ptf_indices'][member])
+            dst_port_names.append(member)
+
+    # stop garp service for single tor
+    if 'dualtor' not in tbinfo['topo']['name']:
+        logging.info("Stopping GARP service on single tor")
+        ptfhost.shell("supervisorctl stop garp_service", module_ignore_errors=True)
+
+    # If running on a dual ToR testbed, any uplink for either ToR is an acceptable
+    # source or destination port
+    if 'dualtor' in tbinfo['topo']['name'] and rand_unselected_dut is not None:
+        peer_mg_facts = rand_unselected_dut.get_extended_minigraph_facts(tbinfo)
+        for interface, neighbor in list(peer_mg_facts['minigraph_neighbors'].items()):
+            if topo == "t0" and "T1" in neighbor["name"]:
+                port_id = peer_mg_facts["minigraph_ptf_indices"][interface]
+                dst_port_indices.append(port_id)
 
     # Generate destination IP's for scale test
     scale_dest_ips = {}
@@ -190,32 +211,8 @@ def setup(rand_selected_dut, tbinfo, vlan_name, ptfadapter):
             dut_mac = rand_selected_dut.shell('sonic-cfggen -d -v \'DEVICE_METADATA.localhost.mac\'')["stdout_lines"][0]
         break
 
-    # Obtain uplink port indicies for this DHCP relay agent
-    uplink_interfaces = []
-    uplink_port_indices = []
-    for iface_name, neighbor_info_dict in list(mg_facts['minigraph_neighbors'].items()):
-        if neighbor_info_dict['name'] in mg_facts['minigraph_devices']:
-            neighbor_device_info_dict = mg_facts['minigraph_devices'][neighbor_info_dict['name']]
-            if 'type' in neighbor_device_info_dict and neighbor_device_info_dict['type'] in \
-                    ['LeafRouter', 'MgmtLeafRouter']:
-                # If this uplink's physical interface is a member of a portchannel interface,
-                # we record the name of the portchannel interface here, as this is the actual
-                # interface the DHCP relay will listen on.
-                iface_is_portchannel_member = False
-                for portchannel_name, portchannel_info_dict in list(mg_facts['minigraph_portchannels'].items()):
-                    if 'members' in portchannel_info_dict and iface_name in portchannel_info_dict['members']:
-                        iface_is_portchannel_member = True
-                        if portchannel_name not in uplink_interfaces:
-                            uplink_interfaces.append(portchannel_name)
-                        break
-                # If the uplink's physical interface is not a member of a portchannel,
-                # add it to our uplink interfaces list
-                if not iface_is_portchannel_member:
-                    uplink_interfaces.append(iface_name)
-                uplink_port_indices.append(mg_facts['minigraph_ptf_indices'][iface_name])
-
     # Obtain MAC address of an uplink interface because vlan mac may be different than that of physical interfaces
-    res = rand_selected_dut.shell('cat /sys/class/net/{}/address'.format(uplink_interfaces[0]))
+    res = rand_selected_dut.shell('cat /sys/class/net/{}/address'.format(dst_port_names[0]))
     uplink_mac = res['stdout']
 
     """ update_payload method which is automatically called in ptfadapter on .send() or any .verify_packet() method
@@ -354,12 +351,8 @@ def intfs_for_test(duthosts, enum_rand_one_per_hwsku_frontend_hostname, enum_fro
 
     logger.info("Selected ints are {0} and {1}".format(intf1, intf2))
 
-    if tbinfo['topo']['type'] == 't1' and is_storage_backend:
-        intf1_indice = mg_facts['minigraph_ptf_indices'][intf1.split(constants.VLAN_SUB_INTERFACE_SEPARATOR)[0]]
-        intf2_indice = mg_facts['minigraph_ptf_indices'][intf2.split(constants.VLAN_SUB_INTERFACE_SEPARATOR)[0]]
-    else:
-        intf1_indice = mg_facts['minigraph_ptf_indices'][intf1]
-        intf2_indice = mg_facts['minigraph_ptf_indices'][intf2]
+    intf1_indice = mg_facts['minigraph_ptf_indices'][intf1]
+    intf2_indice = mg_facts['minigraph_ptf_indices'][intf2]
 
     asic.config_ip_intf(intf1, "10.10.1.2/28", "add")
     asic.config_ip_intf(intf2, "10.10.1.20/28", "add")
@@ -1091,7 +1084,8 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut,
                                    dynamic_acl_create_table,
                                    arp_packets_for_test,
                                    ip_and_intf_info,
-                                   proxy_arp_enabled):
+                                   proxy_arp_enabled,
+                                   toggle_all_simulator_ports_to_rand_selected_tor):
     """Test that we can create a blanket ARP packet forwarding rule with GCU, and that ARP packets
     are correctly forwarded while all others are dropped"""
 
@@ -1120,8 +1114,9 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut,
                                packets_dropped=True)
 
 
-def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
-    """Verify that DHCP and DHCPv6 forwarding rules can be created, and that dhcp packets are properyl forwarded
+def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table,
+                                    toggle_all_simulator_ports_to_rand_selected_tor):
+    """Verify that DHCP and DHCPv6 forwarding rules can be created, and that dhcp packets are properly forwarded
     whereas others are dropped"""
 
     dynamic_acl_create_dhcp_forward_rule(rand_selected_dut)
@@ -1135,7 +1130,8 @@ def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynami
                                packets_dropped=True)
 
 
-def test_gcu_acl_drop_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
+def test_gcu_acl_drop_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table,
+                                    toggle_all_simulator_ports_to_rand_selected_tor):
     """Test that we can create a drop rule via GCU, and that once this drop rule is in place packets
     that match the drop rule are dropped and packets that do not match the drop rule are forwarded"""
 
@@ -1151,7 +1147,8 @@ def test_gcu_acl_drop_rule_creation(rand_selected_dut, ptfadapter, setup, dynami
                                src_port=setup["unblocked_src_port_indice"])
 
 
-def test_gcu_acl_drop_rule_removal(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
+def test_gcu_acl_drop_rule_removal(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table,
+                                   toggle_all_simulator_ports_to_rand_selected_tor):
     """Test that once a drop rule is removed, packets that were previously being dropped are now forwarded"""
 
     dynamic_acl_create_three_drop_rules(rand_selected_dut, setup)
@@ -1163,7 +1160,8 @@ def test_gcu_acl_drop_rule_removal(rand_selected_dut, ptfadapter, setup, dynamic
                                src_port=setup["scale_port_indices"][2])
 
 
-def test_gcu_acl_forward_rule_priority_respected(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
+def test_gcu_acl_forward_rule_priority_respected(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table,
+                                                 toggle_all_simulator_ports_to_rand_selected_tor):
     """Test that forward rules and drop rules can be created at the same time, with the forward rules having
     higher priority than drop.  Then, perform a traffic test to confirm that packets that match both the forward
     and drop rules are correctly forwarded, as the forwarding rules have higher priority"""
@@ -1176,7 +1174,8 @@ def test_gcu_acl_forward_rule_priority_respected(rand_selected_dut, ptfadapter, 
                                packets_dropped=True)
 
 
-def test_gcu_acl_forward_rule_replacement(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
+def test_gcu_acl_forward_rule_replacement(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table,
+                                          toggle_all_simulator_ports_to_rand_selected_tor):
     """Test that forward rules can be created, and then afterwards can have their match pattern updated to a new value.
     Confirm that packets sent that match this new value are correctly forwarded, and that packets that are sent that
     match the old, replaced value are correctly dropped."""
@@ -1194,7 +1193,8 @@ def test_gcu_acl_forward_rule_replacement(rand_selected_dut, ptfadapter, setup, 
 
 
 @pytest.mark.parametrize("ip_type", ["IPV4", "IPV6"])
-def test_gcu_acl_forward_rule_removal(rand_selected_dut, ptfadapter, setup, ip_type, dynamic_acl_create_table):
+def test_gcu_acl_forward_rule_removal(rand_selected_dut, ptfadapter, setup, ip_type, dynamic_acl_create_table,
+                                      toggle_all_simulator_ports_to_rand_selected_tor):
     """Test that if a forward rule is created, and then removed, that packets associated with that rule are properly
     no longer forwarded, and packets associated with the remaining rule are forwarded"""
     dynamic_acl_create_forward_rules(rand_selected_dut)
@@ -1213,7 +1213,8 @@ def test_gcu_acl_forward_rule_removal(rand_selected_dut, ptfadapter, setup, ip_t
     dynamic_acl_verify_packets(setup, ptfadapter, forward_packets, packets_dropped=False)
 
 
-def test_gcu_acl_scale_rules(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
+def test_gcu_acl_scale_rules(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table,
+                             toggle_all_simulator_ports_to_rand_selected_tor):
     """Perform a scale test, creating 150 forward rules with top priority,
     and then creating a drop rule for every single VLAN port on our device.
     Select any one of our blocked ports, as well as the ips for two of our forward rules,
@@ -1241,11 +1242,13 @@ def test_gcu_acl_scale_rules(rand_selected_dut, ptfadapter, setup, dynamic_acl_c
                                src_port=blocked_scale_port)
 
 
-def test_gcu_acl_nonexistent_rule_replacement(rand_selected_dut):
+def test_gcu_acl_nonexistent_rule_replacement(rand_selected_dut,
+                                              toggle_all_simulator_ports_to_rand_selected_tor):
     """Confirm that replacing a nonexistent rule results in operation failure"""
     dynamic_acl_replace_nonexistent_rule(rand_selected_dut)
 
 
-def test_gcu_acl_nonexistent_table_removal(rand_selected_dut):
+def test_gcu_acl_nonexistent_table_removal(rand_selected_dut,
+                                           toggle_all_simulator_ports_to_rand_selected_tor):
     """Confirm that removing a nonexistent table results in operation failure"""
     dynamic_acl_remove_nonexistent_table(rand_selected_dut)

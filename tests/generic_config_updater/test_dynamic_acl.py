@@ -1,8 +1,6 @@
 import logging
 import pytest
-import ipaddress
 import binascii
-import subprocess
 import netaddr
 import struct
 
@@ -12,7 +10,7 @@ import scapy
 from ptf.mask import Mask
 import ptf.packet as packet
 
-from scapy.all import Ether, IPv6, ICMPv6ND_NS, ICMPv6ND_NA, \
+from scapy.all import Ether, ICMPv6ND_NS, ICMPv6ND_NA, \
                       ICMPv6NDOptSrcLLAddr, in6_getnsmac, \
                       in6_getnsma, inet_pton, inet_ntop, socket
 
@@ -80,27 +78,14 @@ BROADCAST_IP = '255.255.255.255'
 DEFAULT_ROUTE_IP = '0.0.0.0'
 DHCP_CLIENT_PORT = 68
 DHCP_SERVER_PORT = 67
-DHCP_LEASE_TIME_OFFSET = 292
-DHCP_LEASE_TIME_LEN = 6
-LEASE_TIME = 86400
 DHCP_PKT_BOOTP_MIN_LEN = 300
-DHCP_ETHER_TYPE_IP = 0x0800
-DHCP_BOOTP_OP_REPLY = 2
-DHCP_BOOTP_HTYPE_ETHERNET = 1
-DHCP_BOOTP_HLEN_ETHERNET = 6
-DHCP_BOOTP_FLAGS_BROADCAST_REPLY = 0x8000
 
 # DHCPv6 Constants
 
 IPv6 = scapy.layers.inet6.IPv6
 DHCP6_Solicit = scapy.layers.dhcp6.DHCP6_Solicit
 DHCP6_RelayForward = scapy.layers.dhcp6.DHCP6_RelayForward
-DHCP6_Request = scapy.layers.dhcp6.DHCP6_Request
-DHCP6_Advertise = scapy.layers.dhcp6.DHCP6_Advertise
-DHCP6_Reply = scapy.layers.dhcp6.DHCP6_Reply
-DHCP6_RelayReply = scapy.layers.dhcp6.DHCP6_RelayReply
 DHCP6OptRelayMsg = scapy.layers.dhcp6.DHCP6OptRelayMsg
-DHCP6OptUnknown = scapy.layers.dhcp6.DHCP6OptUnknown
 
 DHCP6OptClientId = scapy.layers.dhcp6.DHCP6OptClientId
 DHCP6OptOptReq = scapy.layers.dhcp6.DHCP6OptOptReq
@@ -108,7 +93,6 @@ DHCP6OptElapsedTime = scapy.layers.dhcp6.DHCP6OptElapsedTime
 DHCP6OptIA_NA = scapy.layers.dhcp6.DHCP6OptIA_NA
 DUID_LL = scapy.layers.dhcp6.DUID_LL
 DHCP6OptIfaceId = scapy.layers.dhcp6.DHCP6OptIfaceId
-DHCP6OptServerId = scapy.layers.dhcp6.DHCP6OptServerId
 
 BROADCAST_MAC_V6 = '33:33:00:01:00:02'
 BROADCAST_IP_V6 = 'ff02::1:2'
@@ -118,8 +102,10 @@ DHCP_SERVER_PORT_V6 = 547
 dhcp6opts = {79: "OPTION_CLIENT_LINKLAYER_ADDR",  # RFC6939
              }
 
+
 class _LLAddrField(MACField):
     pass
+
 
 class DHCP6OptClientLinkLayerAddr(_DHCP6OptGuessPayload):  # RFC6939
     name = "DHCP6 Option - Client Link Layer address"
@@ -129,7 +115,8 @@ class DHCP6OptClientLinkLayerAddr(_DHCP6OptGuessPayload):  # RFC6939
                    ShortField("lltype", 1),  # ethernet
                    _LLAddrField("clladdr", ETHER_ANY)]
 
-# GCU Fixtures
+# Fixtures
+
 
 @pytest.fixture(scope="module")
 def setup(rand_selected_dut, tbinfo, vlan_name, ptfadapter):
@@ -237,10 +224,7 @@ def setup(rand_selected_dut, tbinfo, vlan_name, ptfadapter):
     def new_update_payload(pkt):
         return pkt
 
-    try:
-        ptfadapter.update_payload = new_update_payload
-    except:
-        setattr(ptfadapter, "update_payload", new_update_payload)
+    ptfadapter.update_payload = new_update_payload
 
     setup_information = {
         "blocked_src_port_name": block_src_port,
@@ -520,23 +504,21 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
 
     # Create discover relayed packet
 
-    ether = packet.Ether(dst=BROADCAST_MAC, src = setup["uplink_mac"], type=0x0800)
-    ip = packet.IP(src=DEFAULT_ROUTE_IP,
-                    dst=BROADCAST_IP, len=328, ttl=64)
-    udp = packet.UDP(sport=DHCP_SERVER_PORT,
-                    dport=DHCP_SERVER_PORT, len=308)
+    ether = packet.Ether(dst=BROADCAST_MAC, src=setup["uplink_mac"], type=0x0800)
+    ip = packet.IP(src=DEFAULT_ROUTE_IP, dst=BROADCAST_IP, len=328, ttl=64)
+    udp = packet.UDP(sport=DHCP_SERVER_PORT, dport=DHCP_SERVER_PORT, len=308)
     bootp = packet.BOOTP(op=1,
-                        htype=1,
-                        hlen=6,
-                        hops=1,
-                        xid=0,
-                        secs=0,
-                        flags=0x8000,
-                        ciaddr=DEFAULT_ROUTE_IP,
-                        yiaddr=DEFAULT_ROUTE_IP,
-                        siaddr=DEFAULT_ROUTE_IP,
-                        giaddr=setup["vlan_ips"]["V4"] if not setup["is_dualtor"] else setup["switch_loopback_ip"],
-                        chaddr=my_chaddr)
+                         htype=1,
+                         hlen=6,
+                         hops=1,
+                         xid=0,
+                         secs=0,
+                         flags=0x8000,
+                         ciaddr=DEFAULT_ROUTE_IP,
+                         yiaddr=DEFAULT_ROUTE_IP,
+                         siaddr=DEFAULT_ROUTE_IP,
+                         giaddr=setup["vlan_ips"]["V4"] if not setup["is_dualtor"] else setup["switch_loopback_ip"],
+                         chaddr=my_chaddr)
     circuit_id_string = rand_selected_dut.hostname + ":" + setup["blocked_src_port_alias"]
     option82 = struct.pack('BB', 1, len(circuit_id_string))
     option82 += circuit_id_string.encode('utf-8')
@@ -544,13 +526,12 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
     option82 += struct.pack('BB', 2, len(remote_id_string))
     option82 += remote_id_string.encode('utf-8')
     if setup["is_dualtor"]:
-        link_selection = bytes(
-            list(map(int, setup["vlan_ips"]["V4"].split('.'))))
+        link_selection = bytes(list(map(int, setup["vlan_ips"]["V4"].split('.'))))
         option82 += struct.pack('BB', 5, 4)
         option82 += link_selection
     bootp /= packet.DHCP(options=[('message-type', 'discover'),
-                                     (82, option82),
-                                     ('end')])
+                                  (82, option82),
+                                  ('end')])
     # If our bootp layer is too small, pad it
     pad_bytes = DHCP_PKT_BOOTP_MIN_LEN - len(bootp)
     if pad_bytes > 0:
@@ -588,37 +569,36 @@ def generate_dhcp_packets(rand_selected_dut, setup, ptfadapter):
 
 
 def generate_dhcpv6_packets(setup, ptfadapter):
+    """Generate a DHCPv6 solicit packet, as well as the expected relay packet"""
 
     client_mac = ptfadapter.dataplane.get_mac(0, setup["blocked_src_port_indice"]).decode()
     client_link_local = generate_link_local_addr(client_mac)
 
-    solicit_packet = packet.Ether(
-        src=client_mac, dst=BROADCAST_MAC_V6)
-    solicit_packet /= IPv6(src=client_link_local,
-                            dst=BROADCAST_IP_V6)
-    solicit_packet /= packet.UDP(sport=DHCP_CLIENT_PORT_V6,
-                                    dport=DHCP_SERVER_PORT_V6)
+    solicit_packet = packet.Ether(src=client_mac, dst=BROADCAST_MAC_V6)
+    solicit_packet /= IPv6(src=client_link_local, dst=BROADCAST_IP_V6)
+    solicit_packet /= packet.UDP(sport=DHCP_CLIENT_PORT_V6, dport=DHCP_SERVER_PORT_V6)
     solicit_packet /= DHCP6_Solicit(trid=12345)
-    solicit_packet /= DHCP6OptClientId(
-        duid=DUID_LL(lladdr=client_mac))
+    solicit_packet /= DHCP6OptClientId(duid=DUID_LL(lladdr=client_mac))
     solicit_packet /= DHCP6OptIA_NA()
     solicit_packet /= DHCP6OptOptReq(reqopts=[23, 24, 29])
     solicit_packet /= DHCP6OptElapsedTime(elapsedtime=0)
 
-
+    # build expected relay forward packet
 
     solicit_relay_forward_packet = packet.Ether(src=setup["uplink_mac"])
     solicit_relay_forward_packet /= IPv6()
     solicit_relay_forward_packet /= packet.UDP(
         sport=DHCP_SERVER_PORT_V6, dport=DHCP_SERVER_PORT_V6)
-    solicit_relay_forward_packet /= DHCP6_RelayForward(msgtype=12, linkaddr=setup["vlan_ips"]["V6"],
-                                                        peeraddr=client_link_local)
+    solicit_relay_forward_packet /= DHCP6_RelayForward(msgtype=12,
+                                                       linkaddr=setup["vlan_ips"]["V6"],
+                                                       peeraddr=client_link_local)
     solicit_relay_forward_packet /= DHCP6OptRelayMsg(message=[DHCP6_Solicit(trid=12345) /
-                                                        DHCP6OptClientId(duid=DUID_LL(lladdr=client_mac)) /
-                                                        DHCP6OptIA_NA()/DHCP6OptOptReq(reqopts=[23, 24, 29]) /
-                                                        DHCP6OptElapsedTime(elapsedtime=0)])
+                                                              DHCP6OptClientId(duid=DUID_LL(lladdr=client_mac)) /
+                                                              DHCP6OptIA_NA()/DHCP6OptOptReq(reqopts=[23, 24, 29]) /
+                                                              DHCP6OptElapsedTime(elapsedtime=0)])
     if setup["is_dualtor"]:
-        solicit_relay_forward_packet /= DHCP6OptIfaceId(ifaceid=socket.inet_pton(socket.AF_INET6, setup["vlan_ips"]["V6"]))
+        solicit_relay_forward_packet /= DHCP6OptIfaceId(ifaceid=socket.inet_pton(socket.AF_INET6,
+                                                                                 setup["vlan_ips"]["V6"]))
     solicit_relay_forward_packet /= DHCP6OptClientLinkLayerAddr()
 
     masked_packet = Mask(solicit_relay_forward_packet)
@@ -639,6 +619,7 @@ def generate_dhcpv6_packets(setup, ptfadapter):
 
     return solicit_packet, masked_packet
 
+
 def dynamic_acl_send_and_verify_dhcp_packets(rand_selected_dut, setup, ptfadapter):
     """Send and verify proper relay of dhcp and dhcpv6 packets"""
 
@@ -649,12 +630,13 @@ def dynamic_acl_send_and_verify_dhcp_packets(rand_selected_dut, setup, ptfadapte
     ptfadapter.dataplane.flush()
 
     testutils.send(ptfadapter, setup["blocked_src_port_indice"], dhcp_discovery)
-    verify_expected_packet_behavior(expected_dhcp_discovery, ptfadapter, setup, expect_drop = False)
+    verify_expected_packet_behavior(expected_dhcp_discovery, ptfadapter, setup, expect_drop=False)
 
     ptfadapter.dataplane.flush()
 
     testutils.send(ptfadapter, setup["blocked_src_port_indice"], dhcpv6_solicit)
     verify_expected_packet_behavior(expected_dhcpv6_solicit, ptfadapter, setup, expect_drop=False)
+
 
 def verify_expected_packet_behavior(exp_pkt, ptfadapter, setup, expect_drop):
     """Verify that a packet was either dropped or forwarded"""
@@ -855,6 +837,7 @@ def dynamic_acl_create_arp_forward_rule(duthost):
     expected_rule_content = ["DYNAMIC_ACL_TABLE", "ARP_RULE", "9997", "FORWARD", "ETHER_TYPE: 0x0806", "Active"]
 
     expect_acl_rule_match(duthost, "ARP_RULE", expected_rule_content)
+
 
 def dynamic_acl_create_dhcp_forward_rule(duthost):
     """Create DHCP forwarding rules"""
@@ -1132,6 +1115,7 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut,
                                packets=generate_packets(setup, DST_IP_BLOCKED, DST_IPV6_BLOCKED),
                                packets_dropped=True)
 
+
 def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
     """Verify that a dhcp rule can be created"""
 
@@ -1144,6 +1128,7 @@ def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynami
                                ptfadapter,
                                packets=generate_packets(setup, DST_IP_BLOCKED, DST_IPV6_BLOCKED),
                                packets_dropped=True)
+
 
 def test_gcu_acl_drop_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table):
     """Test that we can create a drop rule via GCU, and that once this drop rule is in place packets

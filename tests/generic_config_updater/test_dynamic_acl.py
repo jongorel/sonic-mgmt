@@ -3,9 +3,11 @@ import pytest
 import binascii
 import netaddr
 import struct
+import time
 
 from tests.common.helpers.assertions import pytest_require
-from tests.common.utilities import get_upstream_neigh_type, get_downstream_neigh_type
+from tests.arp.arp_utils import collect_info, get_po
+
 
 import scapy
 
@@ -122,7 +124,7 @@ class DHCP6OptClientLinkLayerAddr(_DHCP6OptGuessPayload):  # RFC6939
 
 
 @pytest.fixture(scope="module")
-def setup(rand_selected_dut, rand_unselected_dut, tbinfo, vlan_name, ptfadapter, topo_scenario, ptfhost):
+def setup(rand_selected_dut, rand_unselected_dut, tbinfo, vlan_name, ptfadapter, ptfhost):
     """Setup various variables neede for different tests"""
 
     mg_facts = rand_selected_dut.get_extended_minigraph_facts(tbinfo)
@@ -348,6 +350,41 @@ def intfs_for_test(duthosts, enum_rand_one_per_hwsku_frontend_hostname, enum_fro
             # Select two interfaces for testing which are not in portchannel
             intf1 = ports_for_test[0]
             intf2 = ports_for_test[1]
+    else:
+        # Select first 2 ports that are admin 'up'
+        intf_status = asic.show_interface(command='status')['ansible_facts']['int_status']
+
+        intf1 = None
+        intf2 = None
+        for a_port in ports:
+            if intf_status[a_port]['admin_state'] == 'up':
+                if intf1 is None:
+                    intf1 = a_port
+                elif intf2 is None:
+                    intf2 = a_port
+                else:
+                    break
+
+        if intf1 is None or intf2 is None:
+            pytest.skip("Not enough interfaces on this host/asic (%s/%s) to support test." % (duthost.hostname,
+                                                                                                asic.asic_index))
+        po1 = get_po(mg_facts, intf1)
+        po2 = get_po(mg_facts, intf2)
+
+        if po1:
+            asic.config_portchannel_member(po1, intf1, "del")
+            collect_info(duthost)
+            asic.startup_interface(intf1)
+            collect_info(duthost)
+
+        if po2:
+            asic.config_portchannel_member(po2, intf2, "del")
+            collect_info(duthost)
+            asic.startup_interface(intf2)
+            collect_info(duthost)
+
+        if po1 or po2:
+            time.sleep(40)
 
     logger.info("Selected ints are {0} and {1}".format(intf1, intf2))
 

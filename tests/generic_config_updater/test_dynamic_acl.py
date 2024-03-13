@@ -1086,14 +1086,6 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut,
     dynamic_acl_create_arp_forward_rule(rand_selected_dut)
     dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
 
-    def new_update_payload(self, pkt):
-        return pkt
-
-    try:
-        ptfadapter.update_payload = new_update_payload
-    except:
-        setattr(ptfadapter, "update_payload", new_update_payload)
-
     if ip_version == 'v4':
         pytest_require(ptf_intf_ipv4_addr is not None, 'No IPv4 VLAN address configured on device')
     elif ip_version == 'v6':
@@ -1112,6 +1104,14 @@ def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynami
 
     dynamic_acl_create_dhcp_forward_rule(rand_selected_dut)
     dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
+
+    def new_update_payload(self, pkt):
+        return pkt
+
+    try:
+        ptfadapter.update_payload = new_update_payload
+    except:
+        setattr(ptfadapter, "update_payload", new_update_payload)
 
     dhcp_discovery, expected_dhcp_discovery = generate_dhcp_packets(rand_selected_dut, setup, ptfadapter)
 

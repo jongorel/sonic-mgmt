@@ -124,7 +124,7 @@ class DHCP6OptClientLinkLayerAddr(_DHCP6OptGuessPayload):  # RFC6939
 
 
 @pytest.fixture(scope="module")
-def setup(rand_selected_dut, rand_unselected_dut, tbinfo, vlan_name, ptfadapter, ptfhost):
+def setup(rand_selected_dut, rand_unselected_dut, tbinfo, vlan_name, topo_scenario, ptfadapter, ptfhost):
     """Setup various variables neede for different tests"""
 
     mg_facts = rand_selected_dut.get_extended_minigraph_facts(tbinfo)

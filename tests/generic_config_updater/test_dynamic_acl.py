@@ -36,6 +36,8 @@ from tests.generic_config_updater.gu_utils import format_and_apply_template, loa
 from tests.generic_config_updater.gu_utils import expect_acl_rule_match, expect_acl_rule_removed
 from tests.generic_config_updater.gu_utils import expect_acl_table_match_multiple_bindings
 from tests.common.dualtor.mux_simulator_control import toggle_all_simulator_ports_to_rand_selected_tor  # noqa F401
+from tests.common.utilities import get_upstream_neigh_type, get_downstream_neigh_type
+
 
 pytestmark = [
     pytest.mark.topology('t0', 'm0'),
@@ -138,36 +140,60 @@ def setup(rand_selected_dut, rand_unselected_dut, tbinfo, vlan_name, topo_scenar
         router_mac = rand_selected_dut.facts['router_mac']
 
     topo = tbinfo["topo"]["type"]
+    if topo_scenario == "m0_vlan_scenario":
+        topo = "m0_vlan"
+    elif topo_scenario == "m0_l3_scenario":
+        topo = "m0_l3"
 
     res = rand_selected_dut.shell('cat /sys/class/net/{}/address'.format(vlan_name))
     v4_vlan_mac = res['stdout']
-
-    list_ports = mg_facts["minigraph_vlans"][vlan_name]["members"]
     switch_loopback_ip = mg_facts['minigraph_lo_interfaces'][0]['addr']
 
-    # Get all vlan ports
-    vlan_ports = list(mg_facts['minigraph_vlans'].values())[0]['members']
+    # Get the list of upstream/downstream ports
+    downstream_ports = []
+    upstream_ports = []
+    downstream_port_ids = []
+    upstream_port_ids = []
 
-    for port in vlan_ports:
+
+    if topo == "m0_l3":
+        upstream_neigh_type = get_upstream_neigh_type(topo)
+        downstream_neigh_type = get_downstream_neigh_type(topo)
+        pytest_require(upstream_neigh_type is not None and downstream_neigh_type is not None,
+                       "Cannot get neighbor type for unsupported topo: {}".format(topo))
+        for interface, neighbor in list(mg_facts["minigraph_neighbors"].items()):
+            port_id = mg_facts["minigraph_ptf_indices"][interface]
+            if downstream_neigh_type in neighbor["name"].upper():
+                downstream_ports.append(interface)
+                downstream_port_ids.append(port_id)
+            elif upstream_neigh_type in neighbor["name"].upper():
+                upstream_ports.append(interface)
+                upstream_port_ids.append(port_id)
+    else:
+
+        downstream_ports = list(mg_facts["minigraph_vlans"][vlan_name]["members"])
+        # Put all portchannel members into dst_ports
+        upstream_port_ids = []
+        upstream_ports = []
+        for _, v in mg_facts['minigraph_portchannels'].items():
+            for member in v['members']:
+                upstream_port_ids.append(mg_facts['minigraph_ptf_indices'][member])
+                upstream_ports.append(member)
+
+    for port in downstream_ports:
         if port in mg_facts['minigraph_port_name_to_alias_map']:
             break
         else:
             continue
     block_src_port = port
 
-    unblocked_src_port = vlan_ports[1]
-    scale_ports = vlan_ports[:]
+    unblocked_src_port = downstream_ports[1]
+    scale_ports = downstream_ports[:]
     block_src_port_indice = mg_facts['minigraph_ptf_indices'][block_src_port]
     block_src_port_alias = mg_facts['minigraph_port_name_to_alias_map'][block_src_port]
     unblocked_src_port_indice = mg_facts['minigraph_ptf_indices'][unblocked_src_port]
     scale_ports_indices = [mg_facts['minigraph_ptf_indices'][port_name] for port_name in scale_ports]
-    # Put all portchannel members into dst_ports
-    dst_port_indices = []
-    dst_port_names = []
-    for _, v in mg_facts['minigraph_portchannels'].items():
-        for member in v['members']:
-            dst_port_indices.append(mg_facts['minigraph_ptf_indices'][member])
-            dst_port_names.append(member)
+
 
     # stop garp service for single tor
     if 'dualtor' not in tbinfo['topo']['name']:
@@ -181,7 +207,7 @@ def setup(rand_selected_dut, rand_unselected_dut, tbinfo, vlan_name, topo_scenar
         for interface, neighbor in list(peer_mg_facts['minigraph_neighbors'].items()):
             if topo == "t0" and "T1" in neighbor["name"]:
                 port_id = peer_mg_facts["minigraph_ptf_indices"][interface]
-                dst_port_indices.append(port_id)
+                upstream_port_ids.append(port_id)
 
     # Generate destination IP's for scale test
     scale_dest_ips = {}
@@ -214,7 +240,7 @@ def setup(rand_selected_dut, rand_unselected_dut, tbinfo, vlan_name, topo_scenar
         break
 
     # Obtain MAC address of an uplink interface because vlan mac may be different than that of physical interfaces
-    res = rand_selected_dut.shell('cat /sys/class/net/{}/address'.format(dst_port_names[0]))
+    res = rand_selected_dut.shell('cat /sys/class/net/{}/address'.format(upstream_ports[0]))
     uplink_mac = res['stdout']
 
     """ update_payload method which is automatically called in ptfadapter on .send() or any .verify_packet() method
@@ -233,9 +259,9 @@ def setup(rand_selected_dut, rand_unselected_dut, tbinfo, vlan_name, topo_scenar
         "scale_port_names": scale_ports,
         "scale_port_indices": scale_ports_indices,
         "scale_dest_ips": scale_dest_ips,
-        "dst_port_indices": dst_port_indices,
+        "dst_port_indices": upstream_port_ids,
         "router_mac": router_mac,
-        "bind_ports": list_ports,
+        "bind_ports": downstream_ports,
         "dut_mac": dut_mac,
         "vlan_ips": vlan_ips,
         "is_dualtor": is_dualtor,

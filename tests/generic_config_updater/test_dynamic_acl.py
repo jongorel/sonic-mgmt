@@ -266,6 +266,7 @@ def setup(rand_selected_dut, rand_unselected_dut, tbinfo, vlan_name, topo_scenar
         "switch_loopback_ip": switch_loopback_ip,
         "ipv4_vlan_mac": v4_vlan_mac,
         "uplink_mac": uplink_mac,
+        "topo": topo,
     }
 
     return setup_information
@@ -808,8 +809,10 @@ def dynamic_acl_create_forward_rules(duthost):
 def dynamic_acl_create_secondary_drop_rule(duthost, setup, blocked_port_name=None):
     """Create a drop rule in the format required when an ACL table has rules in it already"""
 
+    blocked_name = setup["blocked_src_port_name"] if blocked_port_name is None else blocked_port_name
+
     extra_vars = {
-        'blocked_port': setup["blocked_src_port_name"] if blocked_port_name is None else blocked_port_name
+        'blocked_port': blocked_name
     }
 
     output = format_and_apply_template(duthost, CREATE_SECONDARY_DROP_RULE_TEMPLATE, extra_vars)
@@ -818,7 +821,7 @@ def dynamic_acl_create_secondary_drop_rule(duthost, setup, blocked_port_name=Non
                              "RULE_3",
                              "9996",
                              "DROP",
-                             "IN_PORTS: " + setup["blocked_src_port_name"],
+                             "IN_PORTS: " + blocked_name,
                              "Active"]
 
     expect_op_success(duthost, output)
@@ -1179,6 +1182,9 @@ def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynami
                                     toggle_all_simulator_ports_to_rand_selected_tor):
     """Verify that DHCP and DHCPv6 forwarding rules can be created, and that dhcp packets are properly forwarded
     whereas others are dropped"""
+
+    if setup["topo"] == "m0_l3":
+        pytest.skip("M0 L3 sets up destination ports differently than what we want for DHCP, skipping test.")
 
     dynamic_acl_create_dhcp_forward_rule(rand_selected_dut)
     dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)

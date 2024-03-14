@@ -193,8 +193,6 @@ def setup(rand_selected_dut, rand_unselected_dut, tbinfo, vlan_name, topo_scenar
     unblocked_src_port_indice = mg_facts['minigraph_ptf_indices'][unblocked_src_port]
     scale_ports_indices = [mg_facts['minigraph_ptf_indices'][port_name] for port_name in scale_ports]
 
-    print(1/0)
-
     # stop garp service for single tor
     if 'dualtor' not in tbinfo['topo']['name']:
         logging.info("Stopping GARP service on single tor")
@@ -807,11 +805,11 @@ def dynamic_acl_create_forward_rules(duthost):
     expect_acl_rule_match(duthost, "RULE_2", expected_rule_2_content)
 
 
-def dynamic_acl_create_secondary_drop_rule(duthost, setup):
+def dynamic_acl_create_secondary_drop_rule(duthost, setup, blocked_port_name=None):
     """Create a drop rule in the format required when an ACL table has rules in it already"""
 
     extra_vars = {
-        'blocked_port': setup["blocked_src_port_name"]
+        'blocked_port': setup["blocked_src_port_name"] if blocked_port_name is None else blocked_port_name
     }
 
     output = format_and_apply_template(duthost, CREATE_SECONDARY_DROP_RULE_TEMPLATE, extra_vars)
@@ -1159,11 +1157,8 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut,
 
     ip_version, outgoing_packet, expected_packet = arp_packets_for_test
 
-    setup["blocked_src_port_name"] = port_name
-    setup["blocked_src_port_indice"] = ptf_intf_index
-
     dynamic_acl_create_arp_forward_rule(rand_selected_dut)
-    dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)
+    dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup, port_name)
 
     if ip_version == 'v4':
         pytest_require(ptf_intf_ipv4_addr is not None, 'No IPv4 VLAN address configured on device')

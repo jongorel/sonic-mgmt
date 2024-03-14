@@ -170,7 +170,6 @@ def setup(rand_selected_dut, rand_unselected_dut, tbinfo, vlan_name, topo_scenar
                 upstream_ports.append(interface)
                 upstream_port_ids.append(port_id)
     else:
-
         downstream_ports = list(mg_facts["minigraph_vlans"][vlan_name]["members"])
         # Put all portchannel members into dst_ports
         upstream_port_ids = []
@@ -194,6 +193,7 @@ def setup(rand_selected_dut, rand_unselected_dut, tbinfo, vlan_name, topo_scenar
     unblocked_src_port_indice = mg_facts['minigraph_ptf_indices'][unblocked_src_port]
     scale_ports_indices = [mg_facts['minigraph_ptf_indices'][port_name] for port_name in scale_ports]
 
+    print(1/0)
 
     # stop garp service for single tor
     if 'dualtor' not in tbinfo['topo']['name']:
@@ -852,6 +852,9 @@ def dynamic_acl_create_drop_rule_initial(duthost, setup):
 def dynamic_acl_create_three_drop_rules(duthost, setup):
     """Create 3 drop rules in the format required when an ACL table does not have any rules in it yet"""
 
+    if len(setup["scale_port_names"]) < 3:
+        pytest.skip("Not enough downstream ports to create three drop rules, skipping this test")
+
     extra_vars = {
         'blocked_port_1': setup["scale_port_names"][0],
         'blocked_port_2': setup["scale_port_names"][1],
@@ -1213,6 +1216,7 @@ def test_gcu_acl_drop_rule_creation(rand_selected_dut, ptfadapter, setup, dynami
 def test_gcu_acl_drop_rule_removal(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table,
                                    toggle_all_simulator_ports_to_rand_selected_tor):
     """Test that once a drop rule is removed, packets that were previously being dropped are now forwarded"""
+
 
     dynamic_acl_create_three_drop_rules(rand_selected_dut, setup)
     dynamic_acl_remove_third_drop_rule(rand_selected_dut)

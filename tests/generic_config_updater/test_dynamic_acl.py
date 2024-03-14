@@ -937,7 +937,7 @@ def dynamic_acl_verify_packets(setup, ptfadapter, packets, packets_dropped, src_
     Args:
         packets: the packets that we are sending
         packets_dropped: whether or not we are expecting to drop or forward these packets
-        src_port_blocked: whether or not to send it on the source port that we block in our drop rules"""
+        src_port: optionally give a different src_port than what we have in setup"""
     if packets_dropped:
         action_type = "dropped"
     else:
@@ -1175,7 +1175,8 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut,
     dynamic_acl_verify_packets(setup,
                                ptfadapter,
                                packets=generate_packets(setup, DST_IP_BLOCKED, DST_IPV6_BLOCKED),
-                               packets_dropped=True)
+                               packets_dropped=True,
+                               src_port=ptf_intf_index)
 
 
 def test_gcu_acl_dhcp_rule_creation(rand_selected_dut, ptfadapter, setup, dynamic_acl_create_table,

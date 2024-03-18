@@ -6,8 +6,6 @@ import struct
 import time
 
 from tests.common.helpers.assertions import pytest_require
-from tests.arp.arp_utils import collect_info, get_po
-
 
 import scapy
 
@@ -307,6 +305,12 @@ def intfs_for_test(duthosts, enum_rand_one_per_hwsku_frontend_hostname, enum_fro
     external_ports = [p for p in list(mg_facts['minigraph_ports'].keys()) if 'BP' not in p]
     ports = list(sorted(external_ports, key=lambda item: int(item.replace('Ethernet', ''))))
 
+    vlan_ipv4_subnet = ""
+    for version in mg_facts['minigraph_vlan_interfaces']:
+        if type(ip_network(version["addr"], strict=False)) is IPv4Network:
+            vlan_ipv4_subnet = version['subnet']
+            break
+
     is_storage_backend = 'backend' in tbinfo['topo']['name']
 
     if tbinfo['topo']['type'] == 't0':
@@ -342,12 +346,15 @@ def intfs_for_test(duthosts, enum_rand_one_per_hwsku_frontend_hostname, enum_fro
             pytest.skip("Not enough interfaces on this host/asic (%s/%s) to support test." % (duthost.hostname,
                                                                                               asic.asic_index))
 
-
     logger.info("Selected int is {0}".format(intf1))
 
     intf1_indice = mg_facts['minigraph_ptf_indices'][intf1]
 
+    asic.config_ip_intf(intf1, vlan_ipv4_subnet, "add")
+
     yield intf1, intf1_indice
+
+    asic.config_ip_intf(intf1, vlan_ipv4_subnet, "remove")
 
 @pytest.fixture(scope='module')
 def ip_and_intf_info(config_facts, intfs_for_test, ptfhost, ptfadapter):

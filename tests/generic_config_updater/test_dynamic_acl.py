@@ -3,7 +3,6 @@ import pytest
 import binascii
 import netaddr
 import struct
-import time
 
 from tests.common.helpers.assertions import pytest_require
 
@@ -355,6 +354,7 @@ def intfs_for_test(duthosts, enum_rand_one_per_hwsku_frontend_hostname, enum_fro
     yield intf1, intf1_indice
 
     asic.config_ip_intf(intf1, vlan_ipv4_subnet, "remove")
+
 
 @pytest.fixture(scope='module')
 def ip_and_intf_info(config_facts, intfs_for_test, ptfhost, ptfadapter):

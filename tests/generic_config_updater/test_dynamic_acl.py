@@ -12,9 +12,7 @@ import scapy
 from ptf.mask import Mask
 import ptf.packet as packet
 
-from scapy.all import Ether, ICMPv6ND_NS, ICMPv6ND_NA, \
-                      ICMPv6NDOptSrcLLAddr, in6_getnsmac, \
-                      in6_getnsma, inet_pton, inet_ntop, socket
+from scapy.all import socket
 
 from scapy.fields import MACField, ShortEnumField, FieldLenField, ShortField
 from scapy.data import ETHER_ANY
@@ -304,12 +302,6 @@ def intfs_for_test(duthosts, enum_rand_one_per_hwsku_frontend_hostname, enum_fro
     mg_facts = asic.get_extended_minigraph_facts(tbinfo)
     external_ports = [p for p in list(mg_facts['minigraph_ports'].keys()) if 'BP' not in p]
     ports = list(sorted(external_ports, key=lambda item: int(item.replace('Ethernet', ''))))
-
-    vlan_ipv4_subnet = ""
-    for version in mg_facts['minigraph_vlan_interfaces']:
-        if type(ip_network(version["addr"], strict=False)) is IPv4Network:
-            vlan_ipv4_subnet = version['subnet']
-            break
 
     is_storage_backend = 'backend' in tbinfo['topo']['name']
 

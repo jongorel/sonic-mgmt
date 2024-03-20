@@ -397,9 +397,13 @@ def prepare_ptf_intf_and_ip(request, rand_selected_dut, config_facts, intfs_for_
         remove_command = "ifconfig {} inet6 del {}".format(ptf_intf_name, ip_for_test)
         clear_command = "sonic-clear ndp"
 
-    ptfhost.shell(add_command)
+    try:
+        ptfhost.shell(add_command)
+    except:
+        ptfhost.shell(remove_command)
+        ptfhost.shell(add_command)
 
-    rand_selected_dut(clear_command)
+    rand_selected_dut.shell(clear_command)
 
     # give table time to clear before starting test
 
@@ -1065,7 +1069,7 @@ def test_gcu_acl_arp_rule_creation(rand_selected_dut,
 
     dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup, port_name)
 
-    rand_selected_dut.shell("ping -c 3 {} {}".format(ipv6_ping_option, ip_address_for_test))
+    rand_selected_dut.shell("ping -c 3 {} {}".format(ipv6_ping_option, ip_address_for_test), module_ignore_errors=True)
 
     time.sleep(10)
     output = rand_selected_dut.show_and_parse("{} {}".format(show_cmd, ip_address_for_test))

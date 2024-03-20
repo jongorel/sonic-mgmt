@@ -397,11 +397,8 @@ def prepare_ptf_intf_and_ip(request, rand_selected_dut, config_facts, intfs_for_
         remove_command = "ifconfig {} inet6 del {}".format(ptf_intf_name, ip_for_test)
         clear_command = "sonic-clear ndp"
 
-    try:
-        ptfhost.shell(add_command)
-    except:
-        ptfhost.shell(remove_command)
-        ptfhost.shell(add_command)
+
+    ptfhost.shell(add_command)
 
     rand_selected_dut.shell(clear_command)
 

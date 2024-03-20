@@ -346,12 +346,14 @@ def intfs_for_test(duthosts, enum_rand_one_per_hwsku_frontend_hostname, enum_fro
     return intf1, intf1_indice
 
 
-@pytest.fixture(scope='function')
-@pytest.mark.parametrize("ip_type", ["IPV4", "IPV6"])
-def prepare_ptf_intf_and_ip(rand_selected_dut, config_facts, intfs_for_test, ptfhost, ip_type):
+@pytest.fixture(params=['IPV4', 'IPV6'])
+def prepare_ptf_intf_and_ip(request, rand_selected_dut, config_facts, intfs_for_test, ptfhost):
     """
     Calculate IP addresses and interface to use for test.  Add the ip address to the ptf port.
     """
+
+    ip_type = request.param
+
     ptf_ports_available_in_topo = ptfhost.host.options['variable_manager'].extra_vars.get("ifaces_map")
 
     intf1_name, intf1_index = intfs_for_test
@@ -784,6 +786,7 @@ def dynamic_acl_create_arp_forward_rule(duthost):
 
     expect_acl_rule_match(duthost, "ARP_RULE", expected_rule_content)
 
+
 def dynamic_acl_create_ndp_forward_rule(duthost):
     "Create an NDP forwarding rule with high priority"
 
@@ -794,6 +797,7 @@ def dynamic_acl_create_ndp_forward_rule(duthost):
     expected_rule_content = ["DYNAMIC_ACL_TABLE", "NDP_RULE", "9996", "FORWARD", "IP_PROTOCOL: 58", "Active"]
 
     expect_acl_rule_match(duthost, "NDP_RULE", expected_rule_content)
+
 
 def dynamic_acl_create_dhcp_forward_rule(duthost):
     """Create DHCP forwarding rules"""

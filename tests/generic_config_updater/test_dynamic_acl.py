@@ -963,9 +963,9 @@ def dynamic_acl_apply_drop_scale_rules(duthost, setup):
     priority = MAX_DROP_RULE_PRIORITY
     json_patch = []
 
-    rule_name = "DROP_RULE" + str(rule_number)
+    rule_name = "DROP_RULE"
     full_rule_name = "/ACL_RULE/DYNAMIC_ACL_TABLE|"+rule_name
-    all_ports = ", ".join(setup["scale_port_names"])
+    all_ports = ",".join(setup["scale_port_names"])
     rule_vals = {
         "PRIORITY": str(priority),
         "PACKET_ACTION": "DROP",
@@ -978,8 +978,6 @@ def dynamic_acl_apply_drop_scale_rules(duthost, setup):
     }
     json_patch.append(patch)
     expected_content = ["DYNAMIC_ACL_TABLE", rule_name, str(priority), "DROP", "IN_PORTS: " + all_ports, "Active"]
-    priority -= 1
-    rule_number += 1
 
     tmpfile = generate_tmpfile(duthost)
     logger.info("tmpfile {}".format(tmpfile))

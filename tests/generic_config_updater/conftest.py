@@ -153,5 +153,8 @@ def ignore_expected_loganalyzer_exceptions(duthosts, rand_one_dut_hostname, loga
 
             # sonic-sairedis/vslib/HostInterfaceInfo.cpp: Need investigation
             ".*ERR syncd[0-9]*#syncd.*tap2veth_fun: failed to write to socket.*",   # test_portchannel_interface tc2
+
+            ".*ERR GenericConfigUpdater: 'apply-patch'.*due to can't remove a non-existent object.*", # Valid test_dynamic_acl
+            ".*ERR GenericConfigUpdater: 'apply-patch'.*due to member.*not found in.*", # Valid test_dynamic_acl
         ]
         loganalyzer[duthost.hostname].ignore_regex.extend(ignoreRegex)

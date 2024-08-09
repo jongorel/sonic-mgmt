@@ -1,0 +1,23 @@
+[
+    {
+        "op": "add",
+        "path": "/ACL_TABLE/DYNAMIC_ACL_TABLE_V4",
+        "value": {
+            "policy_desc": "DYNAMIC_ACL_TABLE_V4",
+            "type": "DYNAMIC_ACL_TABLE_TYPE_V4",
+            "stage": "INGRESS",
+            "ports": {{ bind_ports }}
+        }
+    },
+    {
+        "op": "add",
+        "path": "/ACL_TABLE/DYNAMIC_ACL_TABLE_V6",
+        "value": {
+            "policy_desc": "DYNAMIC_ACL_TABLE_V6",
+            "type": "DYNAMIC_ACL_TABLE_TYPE_V6",
+            "stage": "INGRESS",
+            "ports": {{ bind_ports }}
+        }
+    }
+
+]

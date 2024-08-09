@@ -3,14 +3,14 @@
         "op": "add",
         "path": "/ACL_RULE",
         "value": {
-            "DYNAMIC_ACL_TABLE|DHCP_RULE": {
+            "{{ v4_table_name }}|DHCP_RULE": {
                 "IP_PROTOCOL": "17",
                 "L4_DST_PORT": "67",
                 "ETHER_TYPE": "0x0800",
                 "PRIORITY": "9999",
                 "PACKET_ACTION": "FORWARD"
             },
-            "DYNAMIC_ACL_TABLE|DHCPV6_RULE": {
+            "{{ v6_table_name }}|DHCPV6_RULE": {
                 "IP_PROTOCOL": "17",
                 "L4_DST_PORT_RANGE": "547-548",
                 "ETHER_TYPE": "0x86DD",

@@ -3,9 +3,9 @@
         "op": "add",
         "path": "/ACL_RULE",
         "value": {
-            "DYNAMIC_ACL_TABLE|NDP_RULE": {
-                "IP_PROTOCOL": "58",
-                "PRIORITY": "9996",
+            "{{ v4_table_name }}|ARP_RULE": {
+                "ETHER_TYPE": "0x0806",
+                "PRIORITY": "9997",
                 "PACKET_ACTION": "FORWARD"
             }
         }

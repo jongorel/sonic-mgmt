@@ -1,7 +1,7 @@
 [
     {
         "op": "add",
-        "path": "/ACL_RULE/DYNAMIC_ACL_TABLE|RULE_1",
+        "path": "/ACL_RULE/{{ v4_table_name }}|RULE_1",
         "value": {
             "DST_IP": "{{ ipv4_subnet }}",
             "PRIORITY": "9999",
@@ -10,7 +10,7 @@
     },
     {
         "op": "add",
-        "path": "/ACL_RULE/DYNAMIC_ACL_TABLE|RULE_2",
+        "path": "/ACL_RULE/{{ v6_table_name }}|RULE_2",
         "value": {
             "DST_IPV6": "{{ ipv6_subnet }}",
             "PRIORITY": "9998",

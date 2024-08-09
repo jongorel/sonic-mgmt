@@ -476,10 +476,10 @@ def expect_acl_table_match_multiple_bindings(duthost,
         pytest_assert(set(table_bindings) == set(expected_bindings), "ACL Table bindings don't fully match")
 
 
-def expect_acl_rule_match(duthost, rulename, expected_content_list, setup):
+def expect_acl_rule_match(duthost, rulename, expected_content_list, setup, table_name):
     """Check if acl rule shows as expected"""
 
-    cmds = "show acl rule DYNAMIC_ACL_TABLE {}".format(rulename)
+    cmds = "show acl rule {} {}".format(table_name, rulename)
 
     duts_to_check = [duthost]
     if setup["is_dualtor"]:
@@ -503,10 +503,10 @@ def expect_acl_rule_match(duthost, rulename, expected_content_list, setup):
                               "Unexpected match condition found: " + str(output[i]["match"]))
 
 
-def expect_acl_rule_removed(duthost, rulename, setup):
+def expect_acl_rule_removed(duthost, rulename, setup, table_name):
     """Check if ACL rule has been successfully removed"""
 
-    cmds = "show acl rule DYNAMIC_ACL_TABLE {}".format(rulename)
+    cmds = "show acl rule {} {}".format(table_name, rulename)
 
     duts_to_check = [duthost]
     if setup["is_dualtor"]:

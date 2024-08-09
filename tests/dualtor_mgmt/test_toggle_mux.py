@@ -7,11 +7,10 @@ from tests.common.dualtor.dual_tor_common import active_standby_ports           
 from tests.common.dualtor.mux_simulator_control import check_mux_status, validate_check_result
 from tests.common.dualtor.dual_tor_utils import recover_linkmgrd_probe_interval, update_linkmgrd_probe_interval
 from tests.common.utilities import wait_until
-from tests.common.fixtures.tacacs import tacacs_creds, setup_tacacs    # noqa F401
 
 
 pytestmark = [
-    pytest.mark.topology("t0")
+    pytest.mark.topology("dualtor")
 ]
 
 logger = logging.getLogger(__name__)

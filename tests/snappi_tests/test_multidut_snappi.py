@@ -12,8 +12,9 @@ from tests.snappi_tests.variables import config_set, line_card_choice
 
 SNAPPI_POLL_DELAY_SEC = 2
 
+pytestmark = [pytest.mark.topology('snappi')]
 
-@pytest.mark.topology("snappi")
+
 @pytest.mark.disable_loganalyzer
 def __gen_all_to_all_traffic(testbed_config,
                              port_config_list,
@@ -111,7 +112,7 @@ def test_snappi(request,
         assert False, "Invalid line_card_choice value passed in parameter"
 
     if len(linecard_configuration_set[line_card_choice]['hostname']) > 1:
-        dut_list = random.sample(duthosts, 2)
+        dut_list = random.sample(list(duthosts), 2)
     elif len(linecard_configuration_set[line_card_choice]['hostname']) == 1:
         dut_list = [dut for dut in duthosts
                     if linecard_configuration_set[line_card_choice]['hostname'] == [dut.hostname]]

@@ -271,8 +271,30 @@ def setup(rand_selected_dut, rand_unselected_dut, tbinfo, vlan_name, topo_scenar
             dut_mac = rand_selected_dut.shell('sonic-cfggen -d -v \'DEVICE_METADATA.localhost.mac\'')["stdout_lines"][0]
         break
 
+    # Obtain uplink port indicies for this DHCP relay agent
+    uplink_interfaces = []
+    for iface_name, neighbor_info_dict in list(mg_facts['minigraph_neighbors'].items()):
+        if neighbor_info_dict['name'] in mg_facts['minigraph_devices']:
+            neighbor_device_info_dict = mg_facts['minigraph_devices'][neighbor_info_dict['name']]
+            if 'type' in neighbor_device_info_dict and neighbor_device_info_dict['type'] in \
+                    ['LeafRouter', 'MgmtLeafRouter']:
+                # If this uplink's physical interface is a member of a portchannel interface,
+                # we record the name of the portchannel interface here, as this is the actual
+                # interface the DHCP relay will listen on.
+                iface_is_portchannel_member = False
+                for portchannel_name, portchannel_info_dict in list(mg_facts['minigraph_portchannels'].items()):
+                    if 'members' in portchannel_info_dict and iface_name in portchannel_info_dict['members']:
+                        iface_is_portchannel_member = True
+                        if portchannel_name not in uplink_interfaces:
+                            uplink_interfaces.append(portchannel_name)
+                        break
+                # If the uplink's physical interface is not a member of a portchannel,
+                # add it to our uplink interfaces list
+                if not iface_is_portchannel_member:
+                    uplink_interfaces.append(iface_name)
+
     # Obtain MAC address of an uplink interface because vlan mac may be different than that of physical interfaces
-    res = rand_selected_dut.shell('cat /sys/class/net/{}/address'.format(upstream_ports[0]))
+    res = rand_selected_dut.shell('cat /sys/class/net/{}/address'.format(uplink_interfaces[0]))
     uplink_mac = res['stdout']
 
     """ update_payload method which is automatically called in ptfadapter on .send() or any .verify_packet() method

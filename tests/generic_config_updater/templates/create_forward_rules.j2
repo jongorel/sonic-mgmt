@@ -3,12 +3,12 @@
         "op": "add",
         "path": "/ACL_RULE",
         "value": {
-            " {{ v4_table_name }}|RULE_1": {
+            "{{ v4_table_name }}|RULE_1": {
                 "DST_IP": "{{ ipv4_subnet }}",
                 "PRIORITY": "9999",
                 "PACKET_ACTION": "FORWARD"
             },
-            " {{v6_table_name }}|RULE_2": {
+            "{{v6_table_name }}|RULE_2": {
                 "DST_IPV6": "{{ ipv6_subnet }}",
                 "PRIORITY": "9998",
                 "PACKET_ACTION": "FORWARD"

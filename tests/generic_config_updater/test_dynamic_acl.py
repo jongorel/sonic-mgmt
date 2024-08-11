@@ -1069,7 +1069,7 @@ def dynamic_acl_apply_forward_scale_rules(duthost, setup):
         expect_op_success(duthost, output)
 
     for rule_name, expected_content in expected_rule_contents.items():
-        table_name = setup["v4_table_name"] if "V4" in rule_name else setup["v6_table_name"]
+        table_name = setup["v6_table_name"] if "V6" in rule_name else setup["v4_table_name"]
         expect_acl_rule_match(duthost, rule_name, expected_content, setup, table_name)
 
 

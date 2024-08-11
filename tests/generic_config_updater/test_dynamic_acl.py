@@ -132,9 +132,24 @@ class DHCP6OptClientLinkLayerAddr(_DHCP6OptGuessPayload):  # RFC6939
 
 # Fixtures
 
+# For dualtor
+@pytest.fixture(scope='module')
+def vlan_mac(duthosts, rand_one_dut_hostname):
+    duthost = duthosts[rand_one_dut_hostname]
+    config_facts = duthost.config_facts(host=duthost.hostname, source='running')['ansible_facts']
+    dut_vlan_mac = None
+    for vlan in list(config_facts.get('VLAN', {}).values()):
+        if 'mac' in vlan:
+            logger.debug('Found VLAN mac')
+            dut_vlan_mac = vlan['mac']
+            break
+    if not dut_vlan_mac:
+        logger.debug('No VLAN mac, use default router_mac')
+        dut_vlan_mac = duthost.facts['router_mac']
+    return dut_vlan_mac
 
 @pytest.fixture(scope="module")
-def setup(rand_selected_dut, rand_unselected_dut, tbinfo, vlan_name, topo_scenario, ptfadapter, ptfhost):
+def setup(rand_selected_dut, rand_unselected_dut, tbinfo, vlan_name, topo_scenario, ptfadapter, ptfhost, vlan_mac):
     """Setup various variables neede for different tests"""
 
     mg_facts = rand_selected_dut.get_extended_minigraph_facts(tbinfo)
@@ -166,8 +181,7 @@ def setup(rand_selected_dut, rand_unselected_dut, tbinfo, vlan_name, topo_scenar
         v4_table_name = ACL_TABLE_NAME_T0
         v6_table_name = ACL_TABLE_NAME_T0
 
-    res = rand_selected_dut.shell('cat /sys/class/net/{}/address'.format(vlan_name))
-    v4_vlan_mac = res['stdout']
+    v4_vlan_mac = vlan_mac
     switch_loopback_ip = mg_facts['minigraph_lo_interfaces'][0]['addr']
 
     # Get the list of upstream/downstream ports

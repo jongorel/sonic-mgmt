@@ -271,31 +271,14 @@ def setup(rand_selected_dut, rand_unselected_dut, tbinfo, vlan_name, topo_scenar
             dut_mac = rand_selected_dut.shell('sonic-cfggen -d -v \'DEVICE_METADATA.localhost.mac\'')["stdout_lines"][0]
         break
 
-    # Obtain uplink port indicies for this DHCP relay agent
-    uplink_interfaces = []
-    for iface_name, neighbor_info_dict in list(mg_facts['minigraph_neighbors'].items()):
-        if neighbor_info_dict['name'] in mg_facts['minigraph_devices']:
-            neighbor_device_info_dict = mg_facts['minigraph_devices'][neighbor_info_dict['name']]
-            if 'type' in neighbor_device_info_dict and neighbor_device_info_dict['type'] in \
-                    ['LeafRouter', 'MgmtLeafRouter']:
-                # If this uplink's physical interface is a member of a portchannel interface,
-                # we record the name of the portchannel interface here, as this is the actual
-                # interface the DHCP relay will listen on.
-                iface_is_portchannel_member = False
-                for portchannel_name, portchannel_info_dict in list(mg_facts['minigraph_portchannels'].items()):
-                    if 'members' in portchannel_info_dict and iface_name in portchannel_info_dict['members']:
-                        iface_is_portchannel_member = True
-                        if portchannel_name not in uplink_interfaces:
-                            uplink_interfaces.append(portchannel_name)
-                        break
-                # If the uplink's physical interface is not a member of a portchannel,
-                # add it to our uplink interfaces list
-                if not iface_is_portchannel_member:
-                    uplink_interfaces.append(iface_name)
+    try:
+        # Obtain MAC address of an uplink interface because vlan mac may be different than that of physical interfaces
+        res = rand_selected_dut.shell('cat /sys/class/net/{}/address'.format(upstream_ports[0]))
+        uplink_mac = res['stdout']
+    except:
+        # Uplink MAC not available, we will skip DHCP test as cannot guarantee correct packet formation
+        uplink_mac = "SKIP_TEST"
 
-    # Obtain MAC address of an uplink interface because vlan mac may be different than that of physical interfaces
-    res = rand_selected_dut.shell('cat /sys/class/net/{}/address'.format(uplink_interfaces[0]))
-    uplink_mac = res['stdout']
 
     """ update_payload method which is automatically called in ptfadapter on .send() or any .verify_packet() method
         is bugged for dhcp_discover packets.  Need to override it to do nothing."""
@@ -1248,6 +1231,8 @@ def test_gcu_acl_dhcp_rule_creation(rand_selected_dut,
 
     if setup["topo"] == "m0_l3":
         pytest.skip("M0 L3 sets up destination ports differently than what we want for DHCP, skipping test.")
+    if setup["uplink_mac"] == "SKIP_TEST":
+        pytest.skip("DUT did not allow for uplink MAC address retrieval, skipping test.")
 
     dynamic_acl_create_dhcp_forward_rule(rand_selected_dut, setup)
     dynamic_acl_create_secondary_drop_rule(rand_selected_dut, setup)

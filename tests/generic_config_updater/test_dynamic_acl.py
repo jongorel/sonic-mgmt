@@ -778,6 +778,10 @@ def dynamic_acl_create_forward_rules(duthost, setup):
     expected_rule_1_content = [setup["v4_table_name"], "RULE_1", "9999", "FORWARD", "DST_IP: " + IPV4_SUBNET, "Active"]
     expected_rule_2_content = [setup["v6_table_name"], "RULE_2", "9998", "FORWARD", "DST_IPV6: " + IPV6_SUBNET, "Active"]
 
+    if setup["v4_table_name"] != setup["v6_table_name"]:
+        expected_rule_1_content.append("ETHER_TYPE: 0x0800")
+        expected_rule_2_content.append("IP_TYPE: IPV6ANY")
+
     for output in outputs:
         expect_op_success(duthost, output)
 
@@ -805,6 +809,11 @@ def dynamic_acl_create_secondary_drop_rule(duthost, setup, blocked_port_name=Non
                                 "IN_PORTS: " + blocked_name,
                                 "Active"]
 
+        if table_name == ACL_TABLE_NAME_IPV4_M0:
+            expected_rule_content.append("ETHER_TYPE: 0x0800")
+        elif table_name == ACL_TABLE_NAME_IPV6_M0:
+            expected_rule_content.append("IP_TYPE: IPV6ANY")
+
         for output in outputs:
             expect_op_success(duthost, output)
 
@@ -828,6 +837,11 @@ def dynamic_acl_create_drop_rule_initial(duthost, setup):
                                 "DROP",
                                 "IN_PORTS: " + setup["blocked_src_port_name"],
                                 "Active"]
+
+        if table_name == ACL_TABLE_NAME_IPV4_M0:
+            expected_rule_content.append("ETHER_TYPE: 0x0800")
+        elif table_name == ACL_TABLE_NAME_IPV6_M0:
+            expected_rule_content.append("IP_TYPE: IPV6ANY")
 
         for output in outputs:
             expect_op_success(duthost, output)
@@ -871,6 +885,12 @@ def dynamic_acl_create_three_drop_rules(duthost, setup):
                                 "DROP",
                                 "IN_PORTS: " + extra_vars['blocked_port_3'],
                                 "Active"]
+
+        for expected_rule_content in [expected_rule_3_content, expected_rule_4_content, expected_rule_5_content]:
+            if table_name == ACL_TABLE_NAME_IPV4_M0:
+                expected_rule_content.append("ETHER_TYPE: 0x0800")
+            elif table_name == ACL_TABLE_NAME_IPV6_M0:
+                expected_rule_content.append("IP_TYPE: IPV6ANY")
 
         for output in outputs:
             expect_op_success(duthost, output)
@@ -1025,6 +1045,10 @@ def dynamic_acl_replace_rules(duthost, setup):
                                "DST_IPV6: " + REPLACEMENT_IPV6_SUBNET,
                                "Active"]
 
+    if setup["v4_table_name"] != setup["v6_table_name"]:
+        expected_rule_1_content.append("ETHER_TYPE: 0x0800")
+        expected_rule_2_content.append("IP_TYPE: IPV6ANY")
+
     # replacing an ACL rule causing error logs to get flooded because of a SONiC bug currently - temporary fix
 
     dynamic_acl_remove_ip_forward_rule(duthost, "IPV4", setup)
@@ -1064,13 +1088,23 @@ def dynamic_acl_apply_forward_scale_rules(duthost, setup):
             "PRIORITY": str(priority),
             "PACKET_ACTION": "FORWARD"
         }
-        value_dict[full_rule_name] = rule_vals
         expected_content = [table_name,
                             rule_name,
                             str(priority),
                             "FORWARD",
                             dst_type + ": " + subnet,
                             "Active"]
+
+        if table_name == ACL_TABLE_NAME_IPV4_M0:
+            expected_content.append("ETHER_TYPE: 0x0800")
+            rule_vals["ETHER_TYPE"] = "0x0800"
+        elif table_name == ACL_TABLE_NAME_IPV6_M0:
+            expected_content.append("IP_TYPE: IPV6ANY")
+            rule_vals["IP_TYPE"] = "IPV6ANY"
+
+        value_dict[full_rule_name] = rule_vals
+
+
         expected_rule_contents[rule_name] = expected_content
         priority -= 1
 
@@ -1108,13 +1142,22 @@ def dynamic_acl_apply_drop_scale_rules(duthost, setup):
             "PACKET_ACTION": "DROP",
             "IN_PORTS": all_ports
         }
+
+        expected_content = [table_name, rule_name, str(priority), "DROP", "IN_PORTS: " + all_ports, "Active"]
+
+        if table_name == ACL_TABLE_NAME_IPV4_M0:
+            expected_content.append("ETHER_TYPE: 0x0800")
+            rule_vals["ETHER_TYPE"] = "0x0800"
+        elif table_name == ACL_TABLE_NAME_IPV6_M0:
+            expected_content.append("IP_TYPE: IPV6ANY")
+            rule_vals["IP_TYPE"] = "IPV6ANY"
+
         patch = {
             "op": "add",
             "path": full_rule_name,
             "value": rule_vals
         }
         json_patch.append(patch)
-        expected_content = [table_name, rule_name, str(priority), "DROP", "IN_PORTS: " + all_ports, "Active"]
 
         outputs = apply_formed_json_patch(duthost, json_patch, setup)
 

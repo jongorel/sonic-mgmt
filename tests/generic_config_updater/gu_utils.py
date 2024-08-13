@@ -499,9 +499,12 @@ def expect_acl_rule_match(duthost, rulename, expected_content_list, setup, table
 
         if rule_lines > 1:
             for i in range(1, rule_lines):
+                # expect the addition of ETHER_TYPE: IPV4ETHERTYPE or IP_TYPE: IPV6ANY in the case of split m0 tables
+                if table_name != "DYNAMIC_ACL_TABLE":
+                    if output[i]["match"] == "ETHER_TYPE: 0x0800" or output[i]["match"] == "IP_TYPE: IPV6ANY":
+                        continue
                 pytest_assert(output[i]["match"] in expected_content_list,
                               "Unexpected match condition found: " + str(output[i]["match"]))
-
 
 def expect_acl_rule_removed(duthost, rulename, setup, table_name):
     """Check if ACL rule has been successfully removed"""

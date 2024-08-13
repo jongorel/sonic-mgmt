@@ -7,6 +7,13 @@
                 "PRIORITY": "9997",
                 "PACKET_ACTION": "DROP",
                 "IN_PORTS": "{{ blocked_port }}"
+                {% if table_name == 'DYNAMIC_ACL_TABLE_V4' %}
+                ,
+                "ETHER_TYPE": "0x0800"
+                {% elif table_name == 'DYNAMIC_ACL_TABLE_V6' %}
+                ,
+                "IP_TYPE": "IPV6ANY"
+                {% endif %}
             }
         }
     }

@@ -7,16 +7,37 @@
                 "PRIORITY": "9997",
                 "PACKET_ACTION": "DROP",
                 "IN_PORTS": "{{ blocked_port_1 }}"
+                {% if table_name == 'DYNAMIC_ACL_TABLE_V4' %}
+                ,
+                "ETHER_TYPE": "0x0800"
+                {% elif table_name == 'DYNAMIC_ACL_TABLE_V6' %}
+                ,
+                "IP_TYPE": "IPV6ANY"
+                {% endif %}
             },
             "{{ table_name }}|RULE_4": {
                 "PRIORITY": "9996",
                 "PACKET_ACTION": "DROP",
                 "IN_PORTS": "{{ blocked_port_2 }}"
+                {% if table_name == 'DYNAMIC_ACL_TABLE_V4' %}
+                ,
+                "ETHER_TYPE": "0x0800"
+                {% elif table_name == 'DYNAMIC_ACL_TABLE_V6' %}
+                ,
+                "IP_TYPE": "IPV6ANY"
+                {% endif %}
             },
             "{{ table_name }}|RULE_5": {
                 "PRIORITY": "9995",
                 "PACKET_ACTION": "DROP",
                 "IN_PORTS": "{{ blocked_port_3 }}"
+                {% if table_name == 'DYNAMIC_ACL_TABLE_V4' %}
+                ,
+                "ETHER_TYPE": "0x0800"
+                {% elif table_name == 'DYNAMIC_ACL_TABLE_V6' %}
+                ,
+                "IP_TYPE": "IPV6ANY"
+                {% endif %}
             }
         }
     }

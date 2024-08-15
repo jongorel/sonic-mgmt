@@ -825,7 +825,7 @@ def dynamic_acl_create_drop_rule_initial(duthost, setup):
 
     extra_vars = {
             'blocked_port': setup["blocked_src_port_name"],
-            'table_name': set([setup["v4_table_name"], setup["v6_table_name"]])
+            'table_names': set([setup["v4_table_name"], setup["v6_table_name"]])
         }
 
     outputs = format_and_apply_template(duthost, CREATE_INITIAL_DROP_RULE_TEMPLATE, extra_vars, setup)

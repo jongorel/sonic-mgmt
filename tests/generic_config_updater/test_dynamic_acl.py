@@ -828,10 +828,10 @@ def dynamic_acl_create_drop_rule_initial(duthost, setup):
             'table_name': set([setup["v4_table_name"], setup["v6_table_name"]])
         }
 
+    outputs = format_and_apply_template(duthost, CREATE_INITIAL_DROP_RULE_TEMPLATE, extra_vars, setup)
+
     for output in outputs:
         expect_op_success(duthost, output)
-
-    outputs = format_and_apply_template(duthost, CREATE_INITIAL_DROP_RULE_TEMPLATE, extra_vars, setup)
 
     for table_name in set([setup["v4_table_name"], setup["v6_table_name"]]):
 

@@ -3,6 +3,7 @@
         "op": "add",
         "path": "/ACL_RULE",
         "value": {
+            {% for table_name in table_names %}
             "{{ table_name }}|RULE_3": {
                 "PRIORITY": "9997",
                 "PACKET_ACTION": "DROP",
@@ -38,7 +39,8 @@
                 ,
                 "IP_TYPE": "IPV6ANY"
                 {% endif %}
-            }
+            },
+            {% endfor %}
         }
     }
 ]

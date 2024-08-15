@@ -823,13 +823,17 @@ def dynamic_acl_create_secondary_drop_rule(duthost, setup, blocked_port_name=Non
 def dynamic_acl_create_drop_rule_initial(duthost, setup):
     """Create a drop rule in the format required when an ACL table does not have any rules in it yet"""
 
-    for table_name in set([setup["v4_table_name"], setup["v6_table_name"]]):
-        extra_vars = {
+    extra_vars = {
             'blocked_port': setup["blocked_src_port_name"],
             'table_name': table_name
         }
 
-        outputs = format_and_apply_template(duthost, CREATE_INITIAL_DROP_RULE_TEMPLATE, extra_vars, setup)
+    for output in outputs:
+        expect_op_success(duthost, output)
+
+    outputs = format_and_apply_template(duthost, CREATE_INITIAL_DROP_RULE_TEMPLATE, extra_vars, setup)
+
+    for table_name in set([setup["v4_table_name"], setup["v6_table_name"]]):
 
         expected_rule_content = [table_name,
                                 "RULE_3",
@@ -843,9 +847,6 @@ def dynamic_acl_create_drop_rule_initial(duthost, setup):
         elif table_name == ACL_TABLE_NAME_IPV6_M0:
             expected_rule_content.append("IP_TYPE: IPV6ANY")
 
-        for output in outputs:
-            expect_op_success(duthost, output)
-
         expect_acl_rule_match(duthost, "RULE_3", expected_rule_content, setup, table_name)
 
 
@@ -855,17 +856,20 @@ def dynamic_acl_create_three_drop_rules(duthost, setup):
     if len(setup["scale_port_names"]) < 3:
         pytest.skip("Not enough downstream ports to create three drop rules, skipping this test")
 
-    for table_name in set([setup["v4_table_name"], setup["v6_table_name"]]):
-
-        extra_vars = {
+    extra_vars = {
             'blocked_port_1': setup["scale_port_names"][0],
             'blocked_port_2': setup["scale_port_names"][1],
             'blocked_port_3': setup["scale_port_names"][2],
-            'table_name': table_name
+            'table_names': set([setup["v4_table_name"], setup["v6_table_name"]])
 
         }
 
-        outputs = format_and_apply_template(duthost, CREATE_THREE_DROP_RULES_TEMPLATE, extra_vars, setup)
+    outputs = format_and_apply_template(duthost, CREATE_THREE_DROP_RULES_TEMPLATE, extra_vars, setup)
+
+    for output in outputs:
+        expect_op_success(duthost, output)
+
+    for table_name in set([setup["v4_table_name"], setup["v6_table_name"]]):
 
         expected_rule_3_content = [table_name,
                                 "RULE_3",
@@ -891,9 +895,6 @@ def dynamic_acl_create_three_drop_rules(duthost, setup):
                 expected_rule_content.append("ETHER_TYPE: 0x0800")
             elif table_name == ACL_TABLE_NAME_IPV6_M0:
                 expected_rule_content.append("IP_TYPE: IPV6ANY")
-
-        for output in outputs:
-            expect_op_success(duthost, output)
 
         expect_acl_rule_match(duthost, "RULE_3", expected_rule_3_content, setup, table_name)
         expect_acl_rule_match(duthost, "RULE_4", expected_rule_4_content, setup, table_name)

@@ -39,7 +39,10 @@
                 ,
                 "IP_TYPE": "IPV6ANY"
                 {% endif %}
-            },
+            }
+            {% if not loop.last %}
+            ,
+            {% endif %}
             {% endfor %}
         }
     }

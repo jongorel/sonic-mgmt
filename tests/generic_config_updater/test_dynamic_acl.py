@@ -942,8 +942,15 @@ def dynamic_acl_apply_forward_scale_rules(duthost, setup):
     """Apply a large amount of forward rules to the duthost"""
 
     priority = MAX_IP_RULE_PRIORITY
+    first_patch_value_dict = {}
     value_dict = {}
     expected_rule_contents = {}
+
+    # GCU now has a timeout, so split the patch so there are no more than 25 rules in one patch
+    extra_patches = []
+    temp_patch = []
+    count = 0
+
 
     for rule_name, dest_ip in setup["scale_dest_ips"].items():
         if "V6" in rule_name:
@@ -958,28 +965,59 @@ def dynamic_acl_apply_forward_scale_rules(duthost, setup):
             "PRIORITY": str(priority),
             "PACKET_ACTION": "FORWARD"
         }
-        value_dict[full_rule_name] = rule_vals
-        expected_content = ["DYNAMIC_ACL_TABLE",
-                            rule_name,
-                            str(priority),
-                            "FORWARD",
-                            dst_type + ": " + subnet,
-                            "Active"]
-        expected_rule_contents[rule_name] = expected_content
+        if count < 25:
+            first_patch_value_dict[full_rule_name] = rule_vals
+            expected_content = ["DYNAMIC_ACL_TABLE",
+                                rule_name,
+                                str(priority),
+                                "FORWARD",
+                                dst_type + ": " + subnet,
+                                "Active"]
+            expected_rule_contents[rule_name] = expected_content
+        if count >= 25:
+            patch = {
+                "op": "add",
+                "path": full_rule_name,
+                "value": rule_vals
+            }
+            temp_patch.append(patch)
+            expected_content = ["DYNAMIC_ACL_TABLE",
+                                rule_name,
+                                str(priority),
+                                "FORWARD",
+                                dst_type + ": " + subnet,
+                                "Active"]
+            expected_rule_contents[rule_name] = expected_content
+            if count > 25 and count % 25 == 0:
+                extra_patches.append(temp_patch)
+                temp_patch = []
+
+        # deal with any potential leftover rules in there
+
+        if len(temp_patch) > 0:
+            extra_patches.append(temp_patch)
+
+        count += 1
         priority -= 1
 
-    json_patch = [
-        {
-            "op": "add",
-            "path": "/ACL_RULE",
-            "value": value_dict
-        }
-    ]
 
-    outputs = apply_formed_json_patch(duthost, json_patch, setup)
+    first_patch = [
+            {
+                "op": "add",
+                "path": "/ACL_RULE",
+                "value": first_patch_value_dict
+            }
+        ]
+
+    outputs = apply_formed_json_patch(duthost, first_patch, setup)
 
     for output in outputs:
         expect_op_success(duthost, output)
+
+    for patch in extra_patches:
+        outputs = apply_formed_json_patch(duthost, patch, setup)
+        for output in outputs:
+            expect_op_success(duthost)
 
     for rule_name, expected_content in expected_rule_contents.items():
         expect_acl_rule_match(duthost, rule_name, expected_content, setup)

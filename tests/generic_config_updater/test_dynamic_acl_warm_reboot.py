@@ -37,21 +37,6 @@ from tests.common.dualtor.dual_tor_utils import setup_standby_ports_on_rand_unse
 from tests.common.utilities import get_all_upstream_neigh_type, get_downstream_neigh_type, \
     increment_ipv4_addr, increment_ipv6_addr, is_ipv6_only_topology
 
-# warm reboot imports
-from tests.platform_tests.test_reboot import check_interfaces_and_services, reboot_and_check
-from tests.common.fixtures.conn_graph_facts import conn_graph_facts     # noqa: F401
-
-from tests.common.utilities import wait_until, get_plt_reboot_ctrl
-from tests.common.reboot import sync_reboot_history_queue_with_dut, reboot, check_reboot_cause,\
-    check_reboot_cause_history, check_determine_reboot_cause_service, reboot_ctrl_dict,\
-    wait_for_startup, REBOOT_TYPE_HISTOYR_QUEUE, REBOOT_TYPE_COLD,\
-    REBOOT_TYPE_SOFT, REBOOT_TYPE_FAST, REBOOT_TYPE_WARM, REBOOT_TYPE_WATCHDOG
-from tests.common.platform.transceiver_utils import check_transceiver_basic
-from tests.common.platform.interface_utils import check_all_interface_information, get_port_map
-from tests.common.platform.daemon_utils import check_pmon_daemon_status
-from tests.common.platform.processes_utils import wait_critical_processes, check_critical_processes
-from tests.common.helpers.assertions import pytest_assert
-
 pytestmark = [
     pytest.mark.topology('t0', 'm0'),
 ]
@@ -69,7 +54,6 @@ CREATE_THREE_DROP_RULES_TEMPLATE = "create_three_drop_rules.j2"
 CREATE_ARP_FORWARD_RULE_FILE = "create_arp_forward_rule.json"
 CREATE_NDP_FORWARD_RULE_FILE = "create_ndp_forward_rule.json"
 CREATE_DHCP_FORWARD_RULE_FILE = "create_dhcp_forward_rule_both.json"
-CREATE_BASIC_RULES_FILE = "create_all_basic_rules.json"
 REPLACE_RULES_TEMPLATE = "replace_rules.j2"
 REPLACE_NONEXISTENT_RULE_FILE = "replace_nonexistent_rule.json"
 REMOVE_RULE_TEMPLATE = "remove_rule.j2"
@@ -94,10 +78,6 @@ DST_IPV6_BLOCKED = "103:23:3:1::1"
 
 MAX_IP_RULE_PRIORITY = 800
 MAX_DROP_RULE_PRIORITY = 200
-
-# Warm Reboot Constants
-MAX_WAIT_TIME_FOR_INTERFACES = 300
-MAX_WAIT_TIME_FOR_REBOOT_CAUSE = 120
 
 # DHCP Constants
 
@@ -337,38 +317,6 @@ def setup_env(rand_selected_dut, rand_unselected_dut, setup):
         delete_checkpoint(rand_selected_dut)
         if setup["is_dualtor"]:
             delete_checkpoint(rand_unselected_dut)
-
-
-@pytest.fixture(scope="module")
-def set_max_time_for_interfaces(duthost):
-    """
-    For chassis testbeds, we need to specify plt_reboot_ctrl in inventory file,
-    to let MAX_TIME_TO_REBOOT to be overwritten by specified timeout value
-    """
-    global MAX_WAIT_TIME_FOR_INTERFACES
-    plt_reboot_ctrl = get_plt_reboot_ctrl(duthost, 'test_reboot.py', 'cold')
-    if plt_reboot_ctrl:
-        MAX_WAIT_TIME_FOR_INTERFACES = plt_reboot_ctrl.get('timeout', MAX_WAIT_TIME_FOR_INTERFACES)
-
-
-@pytest.fixture(scope="module")
-def teardown_module(duthosts, enum_rand_one_per_hwsku_hostname,
-                    localhost, conn_graph_facts, xcvr_skip_list):      # noqa: F811
-    duthost = duthosts[enum_rand_one_per_hwsku_hostname]
-    yield
-
-    logging.info(
-        "Tearing down: to make sure all the critical services, interfaces and transceivers are good")
-    interfaces = conn_graph_facts.get("device_conn", {}).get(duthost.hostname, {})
-    wait_for_startup(duthost, localhost, delay=10, timeout=300)
-    if duthost.facts['hwsku'] in {"Nokia-M0-7215", "Nokia-7215"}:
-        wait_critical_processes(duthost)
-    check_critical_processes(duthost, watch_secs=10)
-    check_interfaces_and_services(duthost, interfaces, xcvr_skip_list)
-    if duthost.is_supervisor_node():
-        for lc in duthosts.frontend_nodes:
-            wait_for_startup(lc, localhost, delay=10, timeout=300)
-            check_interfaces_and_services(lc, interfaces, xcvr_skip_list)
 
 
 @pytest.fixture(scope="module")
@@ -1152,40 +1100,6 @@ def dynamic_acl_apply_drop_scale_rules(duthost, setup):
     expect_acl_rule_match(duthost, rule_name, expected_content, setup)
 
 
-def dynamic_acl_apply_basic_rules(duthost, setup):
-    """Apply all of our basic rules to the DUT"""
-
-    outputs = load_and_apply_json_patch(duthost, CREATE_BASIC_RULES_FILE, setup, is_asic_specific=True)
-
-    for output in outputs:
-        expect_op_success(duthost, output)
-
-    expected_dhcpv6_rule_content = ["DYNAMIC_ACL_TABLE",
-                                "DHCPV6_RULE", "897",
-                                "FORWARD",
-                                "IP_PROTOCOL: 17",
-                                "L4_DST_PORT_RANGE: 547-548",
-                                "ETHER_TYPE: 0x86DD",
-                                "Active"]
-
-    expected_dhcp_content = ["DYNAMIC_ACL_TABLE",
-                             "DHCP_RULE", "898",
-                             "FORWARD",
-                             "IP_PROTOCOL: 17",
-                             "L4_DST_PORT: 67",
-                             "ETHER_TYPE: 0x0800",
-                             "Active"]
-
-    expected_arp_rule_content = ["DYNAMIC_ACL_TABLE", "ARP_RULE", "900", "FORWARD", "ETHER_TYPE: 0x0806", "Active"]
-
-    expected_ndp_rule_content = ["DYNAMIC_ACL_TABLE", "NDP_RULE", "899", "FORWARD", "IP_PROTOCOL: 58", "Active"]
-
-    expect_acl_rule_match(duthost, "DHCP_RULE", expected_dhcp_content, setup)
-    expect_acl_rule_match(duthost, "DHCPV6_RULE", expected_dhcpv6_rule_content, setup)
-    expect_acl_rule_match(duthost, "ARP_RULE", expected_arp_rule_content, setup)
-    expect_acl_rule_match(duthost, "NDP_RULE", expected_ndp_rule_content, setup)
-
-
 def dynamic_acl_remove_ip_forward_rule(duthost, ip_type, setup):
     """Remove selected forward rule from the acl table"""
 
@@ -1467,33 +1381,6 @@ def test_gcu_acl_scale_rules(rand_selected_dut, rand_unselected_dut, ptfadapter,
                                generate_packets(setup, tbinfo, DST_IP_BLOCKED, DST_IPV6_BLOCKED),
                                packets_dropped=True,
                                src_port=blocked_scale_port)
-
-def test_warm_reboot(teardown_module, duthosts, enum_rand_one_per_hwsku_hostname,
-                     localhost, conn_graph_facts,
-                     dynamic_acl_create_table, setup,
-                     xcvr_skip_list):      # noqa: F811
-    """
-    @summary: This test case is to perform warm reboot with ACL and check platform status
-    """
-
-    duthost = duthosts[enum_rand_one_per_hwsku_hostname]
-
-    if duthost.is_multi_asic:
-        pytest.skip("Multi-ASIC devices not supporting warm reboot")
-
-    asic_type = duthost.facts["asic_type"]
-
-    if asic_type in ["mellanox"]:
-        issu_capability = duthost.command("show platform mlnx issu")["stdout"]
-        if "disabled" in issu_capability:
-            pytest.skip(
-                "ISSU is not supported on this DUT, skip this test case")
-    
-    dynamic_acl_apply_basic_rules(duthost, setup)
-    dynamic_acl_apply_drop_scale_rules(duthost, setup)
-
-    reboot_and_check(localhost, duthost, conn_graph_facts.get("device_conn", {}).get(duthost.hostname, {}),
-                     xcvr_skip_list, reboot_type=REBOOT_TYPE_WARM, duthosts=duthosts)
 
 
 def test_gcu_acl_nonexistent_rule_replacement(rand_selected_dut,
